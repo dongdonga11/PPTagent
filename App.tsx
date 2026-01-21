@@ -225,4 +225,14 @@ const App: React.FC = () => {
 
         {/* Note Display (Optional footer) */}
         {activeSlide && (
-             <div className="h-12 border-t border-gray-800 bg-gray-90
+             <div className="h-12 border-t border-gray-800 bg-gray-900 flex items-center px-4 text-xs text-gray-500 font-mono">
+                <span className="font-bold text-gray-400 mr-2">演讲备注:</span>
+                <span className="truncate">{activeSlide.speaker_notes}</span>
+             </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default App;

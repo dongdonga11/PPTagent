@@ -29,7 +29,7 @@ export const generatePresentationOutline = async (userInput: string): Promise<an
   `;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-latest',
+    model: 'gemini-3-flash-preview',
     contents: userInput,
     config: {
       systemInstruction: systemPrompt,
@@ -69,7 +69,7 @@ export const generateTheme = async (userInput: string): Promise<GlobalStyle> => 
   `;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-latest',
+    model: 'gemini-3-flash-preview',
     contents: userInput,
     config: {
       systemInstruction: systemPrompt,
@@ -140,7 +140,7 @@ export const generateSlideHtml = async (
   `;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-latest',
+    model: 'gemini-3-flash-preview',
     contents: prompt,
     config: {
       systemInstruction: systemPrompt,
