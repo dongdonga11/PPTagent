@@ -1,0 +1,5 @@
+{
+  "name": "SpaceCoding Presentation Agent",
+  "description": "A conversational IDE for generating Reveal.js presentations. Plan, Design, and Code slides using AI agents with granular control.",
+  "requestFramePermissions": []
+}
