@@ -264,18 +264,17 @@ const App: React.FC = () => {
 
       {/* Presentation Mode Overlay */}
       {isPresenting && presentationUrl && (
-          <div className="fixed inset-0 z-50 bg-black flex flex-col">
-              <div className="absolute top-0 right-0 p-4 z-50 opacity-0 hover:opacity-100 transition-opacity">
-                  <button 
-                      onClick={handleClosePresentation}
-                      className="bg-red-600 text-white p-3 rounded-full hover:bg-red-500 shadow-xl"
-                  >
-                      <i className="fa-solid fa-xmark text-xl"></i>
-                  </button>
-              </div>
+          <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+              <button 
+                  onClick={handleClosePresentation}
+                  className="absolute top-4 right-4 z-[101] bg-gray-800/90 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors border border-gray-600 shadow-2xl flex items-center gap-2 backdrop-blur-sm group cursor-pointer"
+              >
+                  <i className="fa-solid fa-xmark text-lg group-hover:rotate-90 transition-transform"></i>
+                  <span className="font-bold text-sm">退出演示</span>
+              </button>
               <iframe 
                   src={presentationUrl} 
-                  className="w-full h-full border-none"
+                  className="w-full h-full border-none focus:outline-none"
                   title="Full Screen Presentation"
               />
           </div>
