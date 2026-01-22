@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SpaceCoding Presentation Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
       /* Custom Scrollbar for IDE feel */
@@ -26,17 +27,37 @@
       .slide-content-wrapper {
         font-family: 'Inter', system-ui, sans-serif;
       }
+
+      /* Tiptap Styles */
+      .ProseMirror {
+        outline: none;
+        min-height: 300px;
+      }
+      .ProseMirror p.is-editor-empty:first-child::before {
+        color: #6b7280;
+        content: attr(data-placeholder);
+        float: left;
+        height: 0;
+        pointer-events: none;
+      }
     </style>
   <script type="importmap">
 {
   "imports": {
     "uuid": "https://esm.sh/uuid@9.0.1?bundle",
     "@google/genai": "https://esm.sh/@google/genai@0.2.0",
-    "react": "https://esm.sh/react@18.2.0?dev",
-    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime?dev",
-    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev&deps=react@18.2.0",
-    "react-dom": "https://esm.sh/react-dom@18.2.0?dev&deps=react@18.2.0",
-    "framer-motion": "https://esm.sh/framer-motion@10.16.4?dev&deps=react@18.2.0,react-dom@18.2.0",
+    "react": "https://esm.sh/react@18.2.0",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?deps=react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0?deps=react@18.2.0",
+    "framer-motion": "https://esm.sh/framer-motion@10.16.4?deps=react@18.2.0,react-dom@18.2.0",
+    "classnames": "https://esm.sh/classnames@2.3.2",
+    "@tiptap/core": "https://esm.sh/@tiptap/core@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
+    "@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
+    "@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
+    "@tiptap/extension-bubble-menu": "https://esm.sh/@tiptap/extension-bubble-menu@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
+    "@tiptap/extension-floating-menu": "https://esm.sh/@tiptap/extension-floating-menu@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
+    "@tiptap/react": "https://esm.sh/@tiptap/react@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
   }

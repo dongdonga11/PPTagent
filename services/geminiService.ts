@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Slide, GlobalStyle } from "../types";
 
@@ -59,6 +60,42 @@ export const generatePresentationOutline = async (userInput: string): Promise<an
     return [];
   }
 };
+
+// --- AGENT A.1: EDITORIAL ASSISTANT (WeChat/Notion AI Style) ---
+export const refineTextWithAI = async (text: string, instruction: string, context?: string): Promise<string> => {
+    const ai = getAiClient();
+    
+    const systemPrompt = `
+      你是一个专业的微信公众号主编助手。
+      你的任务是根据用户的指令，修改、润色或扩写提供的文本。
+      
+      风格指南：
+      1. **金句卡片**：如果指令涉及“金句”，请提炼出简短、犀利、有穿透力的短句（20字以内），适合发朋友圈。
+      2. **风格迁移**：如果要求模仿特定风格（如“朱迪警官”），请模仿其语气、常用词汇和情感色彩。
+      3. **排版意识**：如果需要，可以适当使用 emoji，但保持段落清晰。
+      
+      规则：
+      1. 只返回修改后的文本内容，不要包含前言或解释。
+      2. 保持中文语境。
+    `;
+    
+    const prompt = `
+      原文: "${text}"
+      指令: ${instruction}
+      ${context ? `上下文背景: ${context}` : ''}
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+            systemInstruction: systemPrompt,
+        }
+    });
+
+    return response.text?.trim() || text;
+}
+
 
 // --- AGENT B: DESIGNER ---
 export const generateTheme = async (userInput: string): Promise<GlobalStyle> => {
@@ -281,8 +318,12 @@ export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle
             }
 
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowRight' || e.key === ' ') nextStep();
-                if (e.key === 'ArrowLeft') prevStep();
+                if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+                    nextStep();
+                }
+                if (e.key === 'ArrowLeft') {
+                    prevStep();
+                }
             });
 
             renderSlide(0);
