@@ -5,6 +5,7 @@ import { SlideRenderer } from './PresentationRunner';
 import { parseScriptAndAlign } from '../utils/timelineUtils';
 import { generateSpeech } from '../services/geminiService';
 import { audioController } from '../utils/audioUtils';
+import ScriptMarkerEditor from './ScriptMarkerEditor';
 
 interface VideoStageProps {
     slides: Slide[];
@@ -118,7 +119,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                 audioController.play(activeSlideInfo.slide.audioData).catch(err => console.error("Audio Play Error", err));
             } else {
                 // Priority 2: Browser TTS Fallback
-                console.log("No AI audio, falling back to browser TTS.");
+                console.log(`[Playback] Slide ${SLIDE_ID}: No AI audio found. Using Browser TTS.`);
                 const cleanText = activeSlideInfo.slide.narration?.replace(/\[M\]|\[M:\d+\]|\[Next\]/g, ' ') || '';
                 if (cleanText) {
                     const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -151,15 +152,19 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         setIsPlaying(false); // Pause editing
     };
 
-    const handleNarrationChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleNarrationChange = (newText: string) => {
         if (!selectedSlide) return;
-        const newText = e.target.value;
+        // Live parsing of markers when text changes via Rich Editor
         const { markers } = parseScriptAndAlign(newText, selectedSlide.duration);
-        onSlideUpdate(selectedSlide.id, { 
-            narration: newText,
-            markers: markers,
-            audioData: undefined // Invalidate old audio to force browser TTS or re-generation
-        });
+        
+        // Optimization: Only update if text actually changed to avoid loop
+        if (newText !== selectedSlide.narration) {
+            onSlideUpdate(selectedSlide.id, { 
+                narration: newText,
+                markers: markers,
+                audioData: undefined // Invalidate old audio
+            });
+        }
     };
 
     const handleGenerateAudio = async () => {
@@ -246,12 +251,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                         <span className="text-xs text-gray-500">Timeline Editor</span>
                     </div>
                     <div className="flex gap-2">
-                        <button 
-                            className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors"
-                            onClick={() => alert('导出功能需要配置 Remotion 后端服务')}
-                        >
-                            <i className="fa-solid fa-download mr-1"></i> 导出 MP4
-                        </button>
+                         {/* Optional Export Buttons */}
                     </div>
                 </div>
 
@@ -332,7 +332,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                                         {slide.audioData ? (
                                                             <i className="fa-solid fa-microphone-lines text-green-400 text-[10px]" title="AI语音已生成"></i>
                                                         ) : (
-                                                            <i className="fa-solid fa-microphone text-gray-600 text-[10px]" title="使用浏览器语音"></i>
+                                                            <i className="fa-solid fa-robot text-gray-500 text-[10px]" title="预览语音 (Browser TTS)"></i>
                                                         )}
                                                         <span className="text-[10px] text-gray-400 truncate font-mono">
                                                             {slide.title}
@@ -351,24 +351,24 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                     </div>
 
                     {/* B. INSPECTOR (Right Side) */}
-                    <div className="w-80 bg-[#161618] border-l border-gray-800 flex flex-col shadow-xl">
+                    <div className="w-96 bg-[#161618] border-l border-gray-800 flex flex-col shadow-xl">
                         <div className="h-8 flex items-center px-4 bg-[#1e1e1e] border-b border-gray-800">
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                <i className="fa-solid fa-sliders mr-2"></i> 语音与标记
+                                <i className="fa-solid fa-sliders mr-2"></i> 属性面板
                             </span>
                         </div>
                         
                         {selectedSlide ? (
                             <div className="flex-1 p-4 overflow-y-auto space-y-6">
                                 {/* Audio Generator */}
-                                <div className="bg-black/30 rounded p-3 border border-gray-800">
+                                <div className={`rounded p-3 border ${selectedSlide.audioData ? 'bg-green-900/10 border-green-800' : 'bg-gray-800/50 border-gray-700'}`}>
                                     <div className="flex justify-between items-center mb-2">
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold">音频源 (Audio Source)</label>
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">语音状态</label>
                                         <div className="text-[10px]">
                                             {selectedSlide.audioData ? (
                                                 <span className="text-green-400 flex items-center gap-1"><i className="fa-brands fa-google"></i> Gemini TTS</span>
                                             ) : (
-                                                <span className="text-gray-500 flex items-center gap-1"><i className="fa-solid fa-globe"></i> Browser TTS (Fallback)</span>
+                                                <span className="text-yellow-500 flex items-center gap-1"><i className="fa-solid fa-robot"></i> 浏览器预览 (未生成)</span>
                                             )}
                                         </div>
                                     </div>
@@ -378,49 +378,55 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                         className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all
                                             ${selectedSlide.audioData 
                                                 ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                                                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white shadow-lg'}
+                                                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white shadow-lg animate-pulse'}
                                         `}
                                     >
                                         {isGeneratingAudio ? (
                                             <><i className="fa-solid fa-circle-notch fa-spin"></i> 生成中...</>
                                         ) : (
-                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成 AI 语音' : '生成 AI 语音 (High Quality)'}</>
+                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成 AI 语音' : '生成高音质语音'}</>
                                         )}
                                     </button>
-                                    <p className="text-[10px] text-gray-500 mt-2">
-                                        AI 语音生成后，分镜时长将自动对齐音频长度。未生成时使用浏览器默认语音预览。
-                                    </p>
                                 </div>
 
-                                {/* Script Editing with Markers */}
-                                <div className="flex-1 flex flex-col">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">包含标记的脚本</label>
-                                    <textarea 
+                                {/* Script Editing with DRAGGABLE Markers */}
+                                <div className="flex-1 flex flex-col h-64">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">脚本编辑器 (可拖拽锚点)</label>
+                                    
+                                    {/* Replaced Textarea with Smart Editor */}
+                                    <ScriptMarkerEditor 
+                                        key={selectedSlide.id} // Re-mount on slide change
                                         value={selectedSlide.narration}
                                         onChange={handleNarrationChange}
-                                        className="w-full bg-[#0F0F12] border border-gray-700 rounded p-3 text-xs text-gray-300 leading-relaxed focus:border-blue-500 focus:outline-none resize-none h-40 custom-scrollbar font-mono"
-                                        placeholder="输入旁白，使用 [M] 标记动画点..."
                                     />
                                 </div>
 
                                 {/* Marker List */}
                                 <div>
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">锚点列表</label>
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">锚点时间表 (自动计算)</label>
                                     <div className="space-y-1">
                                         {selectedSlide.markers?.length === 0 && <div className="text-xs text-gray-600">无动画标记</div>}
                                         {selectedSlide.markers?.map((m) => (
-                                            <div key={m.id} className="flex justify-between items-center bg-black/20 px-2 py-1 rounded border border-gray-800">
-                                                <span className="text-xs text-yellow-500 font-mono font-bold">Marker {m.id}</span>
-                                                <span className="text-xs text-gray-400">@ {m.time}s</span>
+                                            <div key={m.id} className="flex justify-between items-center bg-black/20 px-2 py-1 rounded border border-gray-800 group hover:border-yellow-500/50 transition-colors">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-4 h-4 rounded bg-yellow-500/20 text-yellow-500 text-[9px] flex items-center justify-center font-bold">⚑</span>
+                                                    <span className="text-xs text-gray-300 font-mono">Step {m.id}</span>
+                                                </div>
+                                                <span className="text-xs text-gray-400 font-mono group-hover:text-yellow-400">
+                                                    {m.time}s
+                                                </span>
                                             </div>
                                         ))}
                                     </div>
+                                    <p className="text-[9px] text-gray-600 mt-2">
+                                        * 拖动上方编辑器中的旗子，此处时间会自动更新。
+                                    </p>
                                 </div>
                             </div>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-gray-600 p-8 text-center">
                                 <i className="fa-solid fa-arrow-pointer text-2xl mb-2 opacity-50"></i>
-                                <p className="text-xs">选择时间轴上的片段以编辑语音</p>
+                                <p className="text-xs">选择时间轴上的片段以编辑</p>
                             </div>
                         )}
                     </div>
