@@ -50,6 +50,13 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, newMessage]);
   };
 
+  const handleSlideUpdate = (id: string, updates: Partial<Slide>) => {
+      setState(prev => ({
+          ...prev,
+          slides: prev.slides.map(s => s.id === id ? { ...s, ...updates } : s)
+      }));
+  };
+
   // --- ACTIONS ---
   
   // 1. STORY STAGE: Generate Outline from Article
@@ -161,7 +168,7 @@ const App: React.FC = () => {
             addMessage('assistant', "请先选择一张幻灯片。");
         }
     } else if (state.stage === ProjectStage.EXPORT) {
-        addMessage('assistant', "视频合成中心: 这里可以预览自动化生成的视频流。点击“播放”按钮开始预览，系统会自动朗读旁白。");
+        addMessage('assistant', "视频合成中心: 在时间轴上点击片段可以修改时长和字幕。");
     }
   };
 
@@ -195,10 +202,7 @@ const App: React.FC = () => {
                         {activeSlide ? (
                             <ScriptEditor 
                                 slide={activeSlide} 
-                                onSave={(id, narr, dur) => setState(prev => ({
-                                    ...prev,
-                                    slides: prev.slides.map(s => s.id === id ? { ...s, narration: narr, duration: dur } : s)
-                                }))} 
+                                onSave={(id, narr, dur) => handleSlideUpdate(id, { narration: narr, duration: dur })} 
                             />
                         ) : (
                             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -215,6 +219,7 @@ const App: React.FC = () => {
                 <VideoStage 
                     slides={state.slides}
                     globalStyle={state.globalStyle}
+                    onSlideUpdate={handleSlideUpdate}
                 />
             );
 
@@ -251,10 +256,7 @@ const App: React.FC = () => {
                             <div className="h-1/2 flex-1 border-t border-gray-800">
                                 <CodeEditor 
                                     slide={activeSlide} 
-                                    onSave={(id, html) => setState(prev => ({
-                                        ...prev,
-                                        slides: prev.slides.map(s => s.id === id ? { ...s, content_html: html } : s)
-                                    }))} 
+                                    onSave={(id, html) => handleSlideUpdate(id, { content_html: html })} 
                                 />
                             </div>
                          )}
