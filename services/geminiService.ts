@@ -137,10 +137,6 @@ export const generateSlideHtml = async (
     7. 风格必须专业、现代。兼容深色模式 (text-white/gray-200)。
     8. 使用 FontAwesome 图标 (<i class="fa-solid fa-star"></i>) 增加视觉效果。
     9. **生成的所有文本内容（标题、段落、列表等）必须是简体中文。**
-    10. **添加动画效果**：
-       - 对于列表项 (li) 或分步展示的内容，务必添加 class="fragment fade-up" 或 class="fragment fade-in" 属性，使其在演示时逐个出现。
-       - 对于需要强调的视觉元素（如标题或图标），可以使用 Tailwind 的 class="animate-pulse" 或 class="animate-bounce" 等。
-       - 可以在 <style> 标签中添加简单的 CSS @keyframes 动画来实现图表或形状的动态效果（如宽度增长、旋转等）。
   `;
 
   const response = await ai.models.generateContent({
@@ -181,12 +177,6 @@ export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle
                 --accent-color: ${style.accentColor};
             }
             .reveal { font-family: ${style.fontFamily}, sans-serif; }
-            
-            /* Custom Animation Helpers */
-            .reveal .slides section .fragment.visible {
-                opacity: 1;
-                visibility: visible;
-            }
         </style>
     </head>
     <body>
@@ -202,8 +192,6 @@ export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle
                 center: true,
                 controls: true,
                 progress: true,
-                // Learn more about plugins: https://revealjs.com/plugins/
-                // plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
             });
         </script>
     </body>

@@ -27,6 +27,10 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCode, setShowCode] = useState(false);
   const [mode, setMode] = useState<AgentMode>(AgentMode.IDLE);
+  
+  // State for Full Screen Presentation Mode
+  const [isPresenting, setIsPresenting] = useState(false);
+  const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
 
   const addMessage = (role: 'user' | 'assistant' | 'system', content: string) => {
     const newMessage: ChatMessage = {
@@ -157,16 +161,35 @@ const App: React.FC = () => {
       }));
   };
 
+  const getFullHtmlBlobUrl = () => {
+    const fullHtml = generateFullPresentationHtml(state.slides, state.globalStyle);
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    return URL.createObjectURL(blob);
+  }
+
   const handleDownload = () => {
-      const fullHtml = generateFullPresentationHtml(state.slides, state.globalStyle);
-      const blob = new Blob([fullHtml], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
+      const url = getFullHtmlBlobUrl();
       const a = document.createElement('a');
       a.href = url;
       a.download = `presentation-${state.projectId}.html`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+  };
+
+  const handlePresent = () => {
+      const url = getFullHtmlBlobUrl();
+      setPresentationUrl(url);
+      setIsPresenting(true);
+  };
+
+  const handleClosePresentation = () => {
+      setIsPresenting(false);
+      if (presentationUrl) {
+          URL.revokeObjectURL(presentationUrl);
+          setPresentationUrl(null);
+      }
   };
 
   return (
@@ -199,21 +222,28 @@ const App: React.FC = () => {
       <div className="flex-1 flex flex-col bg-gray-950 relative">
         {/* Toolbar */}
         <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-gray-900">
-            <h1 className="font-bold text-gray-300 text-sm tracking-widest">{state.title}</h1>
+            <h1 className="font-bold text-gray-300 text-sm tracking-widest truncate max-w-xs">{state.title}</h1>
             <div className="flex gap-3">
                  <button 
+                    onClick={handlePresent}
+                    className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors font-semibold shadow-lg shadow-blue-900/50"
+                 >
+                    <i className="fa-solid fa-play mr-2"></i>
+                    演示动画
+                 </button>
+                 <button 
                     onClick={() => setShowCode(!showCode)}
-                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${showCode ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 text-gray-400 hover:text-white'}`}
+                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${showCode ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-gray-700 text-gray-400 hover:text-white'}`}
                  >
                     <i className="fa-solid fa-code mr-2"></i>
                     {showCode ? '隐藏代码' : '显示代码'}
                  </button>
                  <button 
                     onClick={handleDownload}
-                    className="text-xs px-3 py-1.5 rounded bg-green-700 text-white hover:bg-green-600 transition-colors font-semibold"
+                    className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-white transition-colors"
                  >
                     <i className="fa-solid fa-download mr-2"></i>
-                    导出 HTML
+                    导出
                  </button>
             </div>
         </div>
@@ -231,6 +261,25 @@ const App: React.FC = () => {
              </div>
         )}
       </div>
+
+      {/* Presentation Mode Overlay */}
+      {isPresenting && presentationUrl && (
+          <div className="fixed inset-0 z-50 bg-black flex flex-col">
+              <div className="absolute top-0 right-0 p-4 z-50 opacity-0 hover:opacity-100 transition-opacity">
+                  <button 
+                      onClick={handleClosePresentation}
+                      className="bg-red-600 text-white p-3 rounded-full hover:bg-red-500 shadow-xl"
+                  >
+                      <i className="fa-solid fa-xmark text-xl"></i>
+                  </button>
+              </div>
+              <iframe 
+                  src={presentationUrl} 
+                  className="w-full h-full border-none"
+                  title="Full Screen Presentation"
+              />
+          </div>
+      )}
     </div>
   );
 };
