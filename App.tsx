@@ -112,6 +112,62 @@ const App: React.FC = () => {
       newSlides.splice(newIdx, 0, temp);
       setState(prev => ({ ...prev, slides: newSlides }));
   };
+  
+  const handleSplitSlide = (id: string, splitOffset: number) => {
+      const idx = state.slides.findIndex(s => s.id === id);
+      if (idx === -1) return;
+      const original = state.slides[idx];
+
+      // Minimum duration safeguard (e.g. 0.5s)
+      if (splitOffset < 0.5 || splitOffset > original.duration - 0.5) {
+          alert("无法剪辑：剪辑点太靠近边缘");
+          return;
+      }
+
+      const dur1 = Number(splitOffset.toFixed(2));
+      const dur2 = Number((original.duration - splitOffset).toFixed(2));
+
+      // Distribute markers
+      const markersA = (original.markers || []).filter(m => m.time <= splitOffset);
+      const markersB = (original.markers || [])
+          .filter(m => m.time > splitOffset)
+          .map(m => ({ ...m, time: Number((m.time - splitOffset).toFixed(2)) }));
+
+      // Distribute narration (approximate by ratio)
+      // Note: This is imperfect for text, but good for structure. 
+      // User will likely need to adjust text manually.
+      const ratio = splitOffset / original.duration;
+      const splitIndex = Math.floor((original.narration?.length || 0) * ratio);
+      const textA = original.narration?.substring(0, splitIndex) || "";
+      const textB = original.narration?.substring(splitIndex) || "";
+
+      // 1. Left Slide
+      const slideA: Slide = { 
+          ...original, 
+          duration: dur1,
+          markers: markersA,
+          narration: textA, 
+          audioData: undefined // Invalidate audio
+      };
+      
+      // 2. Right Slide
+      const slideB: Slide = {
+          ...original,
+          id: uuidv4(),
+          title: original.title + ' (Part 2)',
+          duration: dur2,
+          markers: markersB,
+          narration: textB,
+          audioData: undefined, // Invalidate audio
+          isGenerated: true // Keep visual style
+      };
+
+      const newSlides = [...state.slides];
+      newSlides[idx] = slideA;
+      newSlides.splice(idx + 1, 0, slideB);
+      
+      setState(prev => ({ ...prev, slides: newSlides }));
+  };
 
   // --- ACTIONS ---
   
@@ -255,6 +311,7 @@ const App: React.FC = () => {
                     onDeleteSlide={handleDeleteSlide}
                     onDuplicateSlide={handleDuplicateSlide}
                     onMoveSlide={handleMoveSlide}
+                    onSplitSlide={handleSplitSlide} // NEW
                 />
             );
 
@@ -289,9 +346,9 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="flex-1 flex flex-col bg-gray-950 relative">
-                        <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-gray-900">
+                        <div className="h-12 border-b border-gray-800 flex items-center justify-center px-4 bg-gray-900">
                             <h1 className="font-bold text-gray-300 text-sm">{state.title}</h1>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 absolute right-4">
                                 <button 
                                     onClick={() => setIsPresenting(true)}
                                     className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500"

@@ -16,6 +16,7 @@ interface VideoStageProps {
     onDeleteSlide: (id: string) => void;
     onDuplicateSlide: (id: string) => void;
     onMoveSlide: (id: string, direction: number) => void;
+    onSplitSlide: (id: string, splitOffset: number) => void; // NEW
 }
 
 const VideoStage: React.FC<VideoStageProps> = ({ 
@@ -25,7 +26,8 @@ const VideoStage: React.FC<VideoStageProps> = ({
     onAddSlide,
     onDeleteSlide,
     onDuplicateSlide,
-    onMoveSlide
+    onMoveSlide,
+    onSplitSlide
 }) => {
     // --- STATE ---
     const [isPlaying, setIsPlaying] = useState(false);
@@ -33,8 +35,16 @@ const VideoStage: React.FC<VideoStageProps> = ({
     const [selectedSlideId, setSelectedSlideId] = useState<string | null>(null);
     const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
     
+    // Dragging State for Trimming
+    const [isDragging, setIsDragging] = useState(false);
+    const dragStartXRef = useRef<number>(0);
+    const dragStartDurationRef = useRef<number>(0);
+    const draggingSlideIdRef = useRef<string | null>(null);
+
     // Refs
     const playingSlideId = useRef<string | null>(null);
+    const playerContainerRef = useRef<HTMLDivElement>(null);
+    const trackContainerRef = useRef<HTMLDivElement>(null);
 
     // --- BROWSER TTS STATE (Fallback) ---
     const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null);
@@ -153,6 +163,15 @@ const VideoStage: React.FC<VideoStageProps> = ({
 
     // --- HANDLERS ---
     const togglePlay = () => setIsPlaying(!isPlaying);
+    
+    const toggleFullscreen = () => {
+        if (!playerContainerRef.current) return;
+        if (!document.fullscreenElement) {
+            playerContainerRef.current.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+        }
+    };
 
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
         const time = Number(e.target.value);
@@ -167,6 +186,70 @@ const VideoStage: React.FC<VideoStageProps> = ({
         setSelectedSlideId(slide.id);
         setCurrentTime(start); // Jump to start of clip
         setIsPlaying(false); // Pause editing
+    };
+
+    // --- TRIM / RESIZE LOGIC ---
+    const handleTrimStart = (e: React.MouseEvent, slide: Slide) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setIsDragging(true);
+        dragStartXRef.current = e.clientX;
+        dragStartDurationRef.current = slide.duration;
+        draggingSlideIdRef.current = slide.id;
+
+        // Add listeners
+        document.addEventListener('mousemove', handleTrimMove);
+        document.addEventListener('mouseup', handleTrimEnd);
+    };
+
+    const handleTrimMove = (e: MouseEvent) => {
+        if (!draggingSlideIdRef.current || !trackContainerRef.current) return;
+        
+        const deltaPixels = e.clientX - dragStartXRef.current;
+        // Calculate conversion: Total Width / Total Duration = Pixels Per Second
+        const trackWidth = trackContainerRef.current.offsetWidth;
+        // Approximation: since we are resizing, total duration changes! 
+        // We use the *current* state as base to avoid infinite resizing loop jitter.
+        const pixelsPerSecond = trackWidth / totalDuration;
+        
+        const deltaSeconds = deltaPixels / pixelsPerSecond;
+        const newDuration = Math.max(1, dragStartDurationRef.current + deltaSeconds); // Min 1s
+        
+        // Optimistic update? Or just wait for mouse up to prevent expensive re-renders?
+        // Let's do live update for smooth feel, but debounce could be better.
+        onSlideUpdate(draggingSlideIdRef.current, { duration: Number(newDuration.toFixed(2)) });
+    };
+
+    const handleTrimEnd = () => {
+        setIsDragging(false);
+        draggingSlideIdRef.current = null;
+        document.removeEventListener('mousemove', handleTrimMove);
+        document.removeEventListener('mouseup', handleTrimEnd);
+    };
+
+
+    const handleSplitAction = () => {
+        if (isPlaying) {
+            togglePlay(); // Pause first
+        }
+        
+        if (!selectedSlide) {
+            // If nothing selected, try to split under playhead
+            if (activeSlideInfo.slide) {
+                onSplitSlide(activeSlideInfo.slide.id, activeSlideInfo.localTime);
+            }
+            return;
+        }
+
+        // Split selected slide
+        // We need the relative time inside that slide.
+        // If playhead is inside, use playhead.
+        // If playhead is outside, this action is ambiguous, but let's assume "Split at Playhead" is the intent.
+        if (activeSlideInfo.slide?.id === selectedSlide.id) {
+             onSplitSlide(selectedSlide.id, activeSlideInfo.localTime);
+        } else {
+            alert("请将播放指针移动到选中的片段范围内进行剪辑。");
+        }
     };
 
     const handleNarrationChange = (newText: string) => {
@@ -211,7 +294,10 @@ const VideoStage: React.FC<VideoStageProps> = ({
         <div className="flex flex-col h-full bg-gray-950">
             {/* 1. MONITOR (Top) */}
             <div className="flex-1 flex flex-col items-center justify-center p-4 bg-[#0F0F12] relative border-b border-gray-800">
-                <div className="aspect-video w-full max-w-4xl bg-black shadow-2xl relative overflow-hidden group border border-gray-800 rounded-lg">
+                <div 
+                    ref={playerContainerRef}
+                    className="aspect-video w-full max-w-4xl bg-black shadow-2xl relative overflow-hidden group border border-gray-800 rounded-lg"
+                >
                     {/* Visuals */}
                     <div className="w-full h-full relative" style={{ backgroundColor: globalStyle.mainColor }}>
                         {activeSlideInfo.slide && (
@@ -232,15 +318,35 @@ const VideoStage: React.FC<VideoStageProps> = ({
                          </div>
                     </div>
                     {/* Controls Overlay */}
+                    <div className="absolute inset-0 z-30 opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-none flex flex-col justify-end p-4 bg-gradient-to-t from-black/50 to-transparent">
+                        <div className="flex justify-between items-end pointer-events-auto">
+                            {!isPlaying && (
+                                <button 
+                                    className="w-12 h-12 rounded-full bg-white/20 backdrop-blur hover:bg-white/40 flex items-center justify-center text-white"
+                                    onClick={togglePlay}
+                                >
+                                    <i className="fa-solid fa-play"></i>
+                                </button>
+                            )}
+                            <button 
+                                onClick={toggleFullscreen}
+                                className="w-8 h-8 rounded bg-black/50 hover:bg-black/80 text-white flex items-center justify-center border border-white/20 ml-auto"
+                            >
+                                <i className="fa-solid fa-expand"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                     {/* Pause Overlay Big Icon */}
                     {!isPlaying && (
-                        <button 
-                            className="absolute inset-0 flex items-center justify-center bg-black/30 z-30 group-hover:bg-black/10 transition-colors"
+                        <div 
+                            className="absolute inset-0 flex items-center justify-center z-20 cursor-pointer"
                             onClick={togglePlay}
                         >
-                            <div className="w-16 h-16 rounded-full bg-white/10 backdrop-blur text-white flex items-center justify-center text-2xl shadow-lg border border-white/20 hover:scale-110 transition-transform">
-                                <i className="fa-solid fa-play ml-1"></i>
-                            </div>
-                        </button>
+                             <div className="w-16 h-16 rounded-full bg-black/30 backdrop-blur flex items-center justify-center text-white/80 border border-white/10">
+                                <i className="fa-solid fa-play ml-1 text-2xl"></i>
+                             </div>
+                        </div>
                     )}
                 </div>
                 
@@ -261,7 +367,23 @@ const VideoStage: React.FC<VideoStageProps> = ({
                             <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
                         </button>
                         <div className="h-4 w-[1px] bg-gray-700"></div>
-                        <span className="text-xs text-gray-500 font-bold tracking-wider">TIMELINE</span>
+                        
+                        {/* Cut Tool */}
+                        <button 
+                            onClick={handleSplitAction}
+                            className="text-xs px-3 py-1.5 rounded flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700"
+                            title="Split Clip at Playhead (Ctrl+K)"
+                        >
+                            <i className="fa-solid fa-scissors text-yellow-500"></i> 剪辑 (Cut)
+                        </button>
+
+                         <button 
+                            onClick={() => selectedSlideId && onDeleteSlide(selectedSlideId)}
+                            className={`text-xs px-3 py-1.5 rounded flex items-center gap-2 border border-gray-700 ${selectedSlideId ? 'bg-gray-800 hover:bg-red-900/50 text-red-400' : 'text-gray-600 cursor-not-allowed'}`}
+                            disabled={!selectedSlideId}
+                        >
+                            <i className="fa-solid fa-trash"></i> 删除
+                        </button>
                     </div>
                     <div className="flex gap-2">
                          <button 
@@ -315,7 +437,11 @@ const VideoStage: React.FC<VideoStageProps> = ({
 
                         {/* 2. Tracks Container */}
                         <div className="flex-1 overflow-x-auto overflow-y-hidden relative custom-scrollbar">
-                            <div className="relative h-full min-w-full" style={{ width: '100%' }}>
+                            <div 
+                                ref={trackContainerRef}
+                                className="relative h-full min-w-full" 
+                                style={{ width: '100%' }}
+                            >
                                 
                                 {/* Global Playhead Line (Vertical) */}
                                 <div 
@@ -334,7 +460,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
                                         return (
                                             <div 
                                                 key={slide.id}
-                                                className={`h-[90%] relative group cursor-pointer transition-all duration-200 border-r border-black/50 overflow-hidden mx-[1px] rounded-sm
+                                                className={`h-[90%] relative group cursor-pointer transition-all duration-75 border-r border-black/50 overflow-hidden mx-[1px] rounded-sm
                                                     ${isSelected ? 'bg-indigo-900/40 ring-2 ring-indigo-500 z-10' : 'bg-gray-800 hover:bg-gray-700'}
                                                 `}
                                                 style={{ width: `${widthPercent}%`, minWidth: '60px' }}
@@ -364,21 +490,22 @@ const VideoStage: React.FC<VideoStageProps> = ({
                                                     </span>
                                                 </div>
 
+                                                {/* TRIM HANDLES (Only when selected) */}
+                                                {isSelected && (
+                                                    <div 
+                                                        className="absolute top-0 bottom-0 right-0 w-2 cursor-col-resize z-50 bg-indigo-500/50 hover:bg-indigo-400"
+                                                        onMouseDown={(e) => handleTrimStart(e, slide)}
+                                                    ></div>
+                                                )}
+
                                                 {/* HOVER ACTIONS (The Insert/Edit functionality) */}
-                                                <div className="absolute inset-0 bg-black/80 hidden group-hover:flex items-center justify-center gap-1 z-50 backdrop-blur-sm">
+                                                <div className="absolute inset-0 bg-black/80 hidden group-hover:flex items-center justify-center gap-1 z-40 backdrop-blur-sm">
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); onMoveSlide(slide.id, -1); }}
                                                         className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center text-[10px]"
                                                         title="向前移动"
                                                     >
                                                         <i className="fa-solid fa-chevron-left"></i>
-                                                    </button>
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); onDeleteSlide(slide.id); }}
-                                                        className="w-5 h-5 rounded bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white flex items-center justify-center text-[10px]"
-                                                        title="删除"
-                                                    >
-                                                        <i className="fa-solid fa-trash"></i>
                                                     </button>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); onDuplicateSlide(slide.id); }}
