@@ -27,12 +27,10 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, globalStyle }) => {
     );
   }
 
-  // We wrap the content in a div that mocks the ".reveal" environment
-  // The content_html contains a <section>...</section>
   return (
     <div className="h-full w-full bg-gray-900 rounded-lg shadow-2xl overflow-hidden flex flex-col">
         <div className="bg-gray-800 px-4 py-2 flex justify-between items-center border-b border-gray-700">
-            <span className="text-xs font-mono text-gray-400 uppercase">实时预览 (Live Preview 16:9)</span>
+            <span className="text-xs font-mono text-gray-400 uppercase">React Motion Preview</span>
             <div className="flex gap-2">
                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
@@ -41,35 +39,30 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, globalStyle }) => {
         </div>
         
         <div 
-            className="flex-1 relative overflow-hidden flex items-center justify-center bg-black p-4 sm:p-8"
+            className="flex-1 relative overflow-hidden flex items-center justify-center p-4 sm:p-8"
             style={{
-                '--main-color': globalStyle.mainColor,
-                '--accent-color': globalStyle.accentColor,
-            } as React.CSSProperties}
+                backgroundColor: globalStyle.mainColor, // Use theme background for container
+                backgroundImage: `radial-gradient(circle at center, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.1) 100%)`
+            }}
         >
             {/* 
-              This container mocks the Reveal.js scale transform area. 
-              We use a fixed aspect ratio box (16:9).
+              Aspect Ratio Container (16:9)
             */}
             <div 
-                className="slide-preview-container aspect-video w-full max-w-5xl bg-black text-white relative shadow-2xl border border-gray-800 overflow-hidden"
+                className="slide-preview-container aspect-video w-full max-w-5xl bg-transparent relative shadow-2xl border border-white/10 overflow-hidden"
                 style={{
-                    backgroundColor: '#191919', // Default Reveal Black theme bg
-                    backgroundImage: `radial-gradient(circle at center, #2a2a2a 0%, #111 100%)`
+                    fontFamily: globalStyle.fontFamily
                 }}
             >
                 {/* 
-                  Dangerous HTML injection is necessary here as this is a "browser" within a browser.
-                  The content comes from our AI Coder.
-                  
-                  CSS Tricks here:
-                  1. [&>section]:h-full -> Forces the root <section> to fill the 16:9 container.
-                  2. text-[16px] sm:text-[18px] md:text-[22px] -> Sets a responsive base font size so tailwind rem units scale somewhat realistically.
-                  3. overflow-y-auto -> Allows scrolling IN EDIT MODE if AI generates too much, so user can fix it, even though real presentation might clip.
+                  Scale text based on viewport width for preview.
+                  We use a div instead of section. 
+                  overflow-y-auto allows editing overflow content.
                 */}
                 <div 
-                    className="w-full h-full flex items-center justify-center text-[10px] sm:text-[12px] md:text-[16px] lg:text-[20px] [&>section]:w-full [&>section]:h-full [&>section]:p-8 [&>section]:box-border [&>section]:overflow-y-auto [&>section]:no-scrollbar"
-                    dangerouslySetInnerHTML={{ __html: slide.content_html || '<section><h1>空白幻灯片</h1></section>' }} 
+                    className="w-full h-full flex flex-col text-[10px] sm:text-[12px] md:text-[16px] lg:text-[20px] p-8 overflow-y-auto"
+                    style={{ color: '#fff' }} /* Default text color, overridden by tailwind in html */
+                    dangerouslySetInnerHTML={{ __html: slide.content_html || '<div class="flex items-center justify-center h-full"><h1>空白幻灯片</h1></div>' }} 
                 />
             </div>
         </div>

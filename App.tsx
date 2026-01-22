@@ -5,11 +5,12 @@ import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
 import CodeEditor from './components/CodeEditor';
+import PresentationRunner from './components/PresentationRunner'; // Import the new runner
 import { generatePresentationOutline, generateSlideHtml, generateTheme, generateFullPresentationHtml } from './services/geminiService';
 
 const DEFAULT_STYLE: GlobalStyle = {
   themeName: 'SpaceDark',
-  mainColor: '#1f2937',
+  mainColor: '#111827', // gray-900
   accentColor: '#3b82f6', // blue-500
   fontFamily: 'Inter, sans-serif'
 };
@@ -30,7 +31,6 @@ const App: React.FC = () => {
   
   // State for Full Screen Presentation Mode
   const [isPresenting, setIsPresenting] = useState(false);
-  const [presentationUrl, setPresentationUrl] = useState<string | null>(null);
 
   const addMessage = (role: 'user' | 'assistant' | 'system', content: string) => {
     const newMessage: ChatMessage = {
@@ -66,7 +66,7 @@ const App: React.FC = () => {
              title: item.title,
              visual_intent: item.visual_intent,
              speaker_notes: item.speaker_notes,
-             content_html: `<section><h1>${item.title}</h1><p>正在生成内容...</p></section>`,
+             content_html: `<div class="h-full flex flex-col justify-center items-center"><h1 class="text-6xl font-bold mb-4">${item.title}</h1><p class="text-xl opacity-70">正在生成内容...</p></div>`,
              isGenerated: false,
              isLoading: false
            }));
@@ -89,15 +89,12 @@ const App: React.FC = () => {
       } 
       // SCENARIO 2: Has slides -> Refinement or Global Change
       else {
-        // Simple heuristic: If text contains "style" or "color" or "颜色", it's a Designer request
+        // Simple heuristic for Designer request
         if (text.toLowerCase().includes('color') || text.toLowerCase().includes('style') || text.toLowerCase().includes('theme') || text.includes('颜色') || text.includes('风格')) {
             setMode(AgentMode.DESIGNER);
             const newTheme = await generateTheme(text);
             setState(prev => ({ ...prev, globalStyle: newTheme }));
             addMessage('assistant', `已更新主题为 ${newTheme.themeName} (主色: ${newTheme.mainColor}, 强调色: ${newTheme.accentColor})`);
-            
-            // Re-generate current slide to apply new colors if needed? 
-            // For now, CSS variables handle it, but if HTML structure needs change, we'd need to re-gen.
         } 
         // Otherwise, it's a Coder request for the ACTIVE slide
         else if (activeSlideId) {
@@ -119,7 +116,6 @@ const App: React.FC = () => {
   };
 
   const triggerSlideGeneration = async (id: string, slideMetadata: Slide, style: GlobalStyle, refinementInstruction?: string) => {
-    // Optimistic update: Set loading
     setState(prev => ({
         ...prev,
         slides: prev.slides.map(s => s.id === id ? { ...s, isLoading: true } : s)
@@ -148,7 +144,6 @@ const App: React.FC = () => {
   const handleSelectSlide = (id: string) => {
     setActiveSlideId(id);
     const slide = state.slides.find(s => s.id === id);
-    // Auto-generate if not generated yet and not loading
     if (slide && !slide.isGenerated && !slide.isLoading) {
         triggerSlideGeneration(id, slide, state.globalStyle);
     }
@@ -161,14 +156,11 @@ const App: React.FC = () => {
       }));
   };
 
-  const getFullHtmlBlobUrl = () => {
-    const fullHtml = generateFullPresentationHtml(state.slides, state.globalStyle);
-    const blob = new Blob([fullHtml], { type: 'text/html' });
-    return URL.createObjectURL(blob);
-  }
-
+  // Export static HTML
   const handleDownload = () => {
-      const url = getFullHtmlBlobUrl();
+      const fullHtml = generateFullPresentationHtml(state.slides, state.globalStyle);
+      const blob = new Blob([fullHtml], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `presentation-${state.projectId}.html`;
@@ -176,20 +168,6 @@ const App: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-  };
-
-  const handlePresent = () => {
-      const url = getFullHtmlBlobUrl();
-      setPresentationUrl(url);
-      setIsPresenting(true);
-  };
-
-  const handleClosePresentation = () => {
-      setIsPresenting(false);
-      if (presentationUrl) {
-          URL.revokeObjectURL(presentationUrl);
-          setPresentationUrl(null);
-      }
   };
 
   return (
@@ -225,7 +203,7 @@ const App: React.FC = () => {
             <h1 className="font-bold text-gray-300 text-sm tracking-widest truncate max-w-xs">{state.title}</h1>
             <div className="flex gap-3">
                  <button 
-                    onClick={handlePresent}
+                    onClick={() => setIsPresenting(true)}
                     className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors font-semibold shadow-lg shadow-blue-900/50"
                  >
                     <i className="fa-solid fa-play mr-2"></i>
@@ -243,7 +221,7 @@ const App: React.FC = () => {
                     className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-white transition-colors"
                  >
                     <i className="fa-solid fa-download mr-2"></i>
-                    导出
+                    导出HTML
                  </button>
             </div>
         </div>
@@ -262,22 +240,13 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Presentation Mode Overlay */}
-      {isPresenting && presentationUrl && (
-          <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-              <button 
-                  onClick={handleClosePresentation}
-                  className="absolute top-4 right-4 z-[101] bg-gray-800/90 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors border border-gray-600 shadow-2xl flex items-center gap-2 backdrop-blur-sm group cursor-pointer"
-              >
-                  <i className="fa-solid fa-xmark text-lg group-hover:rotate-90 transition-transform"></i>
-                  <span className="font-bold text-sm">退出演示</span>
-              </button>
-              <iframe 
-                  src={presentationUrl} 
-                  className="w-full h-full border-none focus:outline-none"
-                  title="Full Screen Presentation"
-              />
-          </div>
+      {/* NEW Presentation Runner Overlay */}
+      {isPresenting && (
+          <PresentationRunner 
+              slides={state.slides} 
+              globalStyle={state.globalStyle}
+              onClose={() => setIsPresenting(false)}
+          />
       )}
     </div>
   );

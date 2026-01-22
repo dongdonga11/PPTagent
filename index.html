@@ -6,9 +6,6 @@
     <title>SpaceCoding Presentation Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Reveal.js Theme CSS for accurate preview simulation -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/theme/black.min.css" id="theme">
     <style>
       /* Custom Scrollbar for IDE feel */
       ::-webkit-scrollbar {
@@ -26,16 +23,8 @@
         background: #6b7280; 
       }
       
-      /* Isolate the slide preview to prevent global styles from breaking the app UI */
-      .slide-preview-container section {
-        display: block !important; /* Force block for preview since we aren't running the full reveal.js js engine in preview */
-        top: 0 !important;
-        position: relative !important;
-        height: 100%;
-        width: 100%;
-      }
-      .slide-preview-container {
-        font-family: 'Source Sans Pro', Helvetica, sans-serif;
+      .slide-content-wrapper {
+        font-family: 'Inter', system-ui, sans-serif;
       }
     </style>
   <script type="importmap">
@@ -47,6 +36,7 @@
     "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime?dev",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev&deps=react@18.2.0",
     "react-dom": "https://esm.sh/react-dom@18.2.0?dev&deps=react@18.2.0",
+    "framer-motion": "https://esm.sh/framer-motion@10.16.4?dev&deps=react@18.2.0,react-dom@18.2.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
   }
