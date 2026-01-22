@@ -9,22 +9,23 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// --- AGENT A: PLANNER ---
+// --- AGENT A: PLANNER & SCRIPTWRITER ---
 export const generatePresentationOutline = async (userInput: string): Promise<any[]> => {
   const ai = getAiClient();
   
   const systemPrompt = `
-    你是一个演示文稿“架构师” (Structure Architect)。
-    你的目标是分析用户的请求，并生成演示文稿的结构化 JSON 大纲。
+    你是一个全能的内容架构师。
+    你的目标是分析用户的请求，生成演示文稿的结构化大纲，并**为每一页编写视频旁白脚本**。
     
     规则：
-    1. 创建符合逻辑的流程（例如：封面 -> 问题引入 -> 解决方案 -> 详细功能 -> 价值/数据 -> 总结）。
-    2. 建议生成 5-8 页幻灯片。
-    3. 'visual_intent' 字段必须描述布局意图（例如：“左文右图”、“三列网格”、“大字居中标题”、“数据漏斗图”）。
-    4. 'content_html' 初始为空。
-    5. **所有生成的标题 (title) 和演讲备注 (speaker_notes) 必须使用简体中文。**
+    1. 创建符合逻辑的流程（建议 5-8 页）。
+    2. 'visual_intent'：描述画面布局（如“左文右图”）。
+    3. **'narration' (关键)**：编写该页面的逐字演讲稿/视频旁白。口语化、自然、有吸引力。长度应适中（约 30-60 字）。
+    4. 'duration'：根据旁白长度预估时长（秒）。
+    5. 'speaker_notes'：给演讲者的提示（不同于旁白）。
+    6. **所有内容必须使用简体中文。**
     
-    输出格式：JSON 对象数组 (Array of objects)。
+    输出格式：JSON 对象数组。
   `;
 
   const response = await ai.models.generateContent({
@@ -41,8 +42,10 @@ export const generatePresentationOutline = async (userInput: string): Promise<an
             title: { type: Type.STRING },
             visual_intent: { type: Type.STRING },
             speaker_notes: { type: Type.STRING },
+            narration: { type: Type.STRING, description: "Video voiceover script for this slide" },
+            duration: { type: Type.NUMBER, description: "Estimated duration in seconds" }
           },
-          required: ["title", "visual_intent", "speaker_notes"],
+          required: ["title", "visual_intent", "speaker_notes", "narration", "duration"],
         },
       },
     },
@@ -110,7 +113,7 @@ export const generateSlideHtml = async (
     Generate the HTML for this specific slide:
     Title: ${slide.title}
     Visual Intent: ${slide.visual_intent}
-    Speaker Notes context: ${slide.speaker_notes}
+    Narration Context: ${slide.narration}
     Global Style: Main Color: ${globalStyle.mainColor}, Accent: ${globalStyle.accentColor}.
 
     ${context ? `USER REFINEMENT INSTRUCTION: ${context}` : ''}

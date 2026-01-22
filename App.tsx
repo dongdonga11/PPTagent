@@ -1,24 +1,30 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { PresentationState, Slide, ChatMessage, AgentMode, GlobalStyle } from './types';
+import { PresentationState, Slide, ChatMessage, AgentMode, GlobalStyle, ProjectStage } from './types';
+import StageSidebar from './components/StageSidebar';
+import ArticleEditor from './components/ArticleEditor';
 import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
 import CodeEditor from './components/CodeEditor';
-import PresentationRunner from './components/PresentationRunner'; // Import the new runner
+import ScriptEditor from './components/ScriptEditor';
+import PresentationRunner from './components/PresentationRunner';
 import { generatePresentationOutline, generateSlideHtml, generateTheme, generateFullPresentationHtml } from './services/geminiService';
 
 const DEFAULT_STYLE: GlobalStyle = {
   themeName: 'SpaceDark',
-  mainColor: '#111827', // gray-900
-  accentColor: '#3b82f6', // blue-500
+  mainColor: '#111827',
+  accentColor: '#3b82f6',
   fontFamily: 'Inter, sans-serif'
 };
 
 const App: React.FC = () => {
+  // --- GLOBAL STATE ---
   const [state, setState] = useState<PresentationState>({
     projectId: uuidv4(),
     title: '未命名项目',
+    stage: ProjectStage.STORY, // Start at Story stage
+    sourceMaterial: '',
     slides: [],
     globalStyle: DEFAULT_STYLE
   });
@@ -26,12 +32,13 @@ const App: React.FC = () => {
   const [activeSlideId, setActiveSlideId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showCode, setShowCode] = useState(false);
+  const [editorMode, setEditorMode] = useState<'code' | 'script' | 'none'>('none');
   const [mode, setMode] = useState<AgentMode>(AgentMode.IDLE);
-  
-  // State for Full Screen Presentation Mode
   const [isPresenting, setIsPresenting] = useState(false);
 
+  const activeSlide = state.slides.find(s => s.id === activeSlideId) || null;
+
+  // --- HELPERS ---
   const addMessage = (role: 'user' | 'assistant' | 'system', content: string) => {
     const newMessage: ChatMessage = {
       id: uuidv4(),
@@ -42,205 +49,261 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, newMessage]);
   };
 
-  const activeSlide = state.slides.find(s => s.id === activeSlideId) || null;
+  // --- ACTIONS ---
+  
+  // 1. STORY STAGE: Generate Outline from Article
+  const handleGenerateScriptFromArticle = async () => {
+      if (!state.sourceMaterial.trim()) return;
+      
+      setIsProcessing(true);
+      setMode(AgentMode.PLANNER);
+      addMessage('user', "请根据文案生成分镜脚本...");
+      
+      try {
+          // Pass the full source material to the Planner
+          const outline = await generatePresentationOutline(state.sourceMaterial);
+          
+          if (outline.length > 0) {
+            const newSlides: Slide[] = outline.map(item => ({
+                id: uuidv4(),
+                title: item.title,
+                visual_intent: item.visual_intent,
+                speaker_notes: item.speaker_notes || '',
+                narration: item.narration || `这是关于${item.title}的讲解。`,
+                duration: item.duration || 10,
+                content_html: `<div class="h-full flex flex-col justify-center items-center"><h1 class="text-6xl font-bold mb-4" data-motion="fade-up">${item.title}</h1><p class="text-xl opacity-70" data-motion="fade-up">等待视觉生成...</p></div>`,
+                isGenerated: false,
+                isLoading: false
+            }));
 
-  // Handle User Input
-  const handleSendMessage = async (text: string) => {
-    addMessage('user', text);
-    setIsProcessing(true);
-
-    try {
-      // SCENARIO 1: No slides yet -> Planner Agent
-      if (state.slides.length === 0) {
-        setMode(AgentMode.PLANNER);
-        
-        // Parallel: Theme + Outline
-        const [outline, theme] = await Promise.all([
-             generatePresentationOutline(text),
-             generateTheme(text)
-        ]);
-
-        if (outline.length > 0) {
-           const newSlides: Slide[] = outline.map(item => ({
-             id: uuidv4(),
-             title: item.title,
-             visual_intent: item.visual_intent,
-             speaker_notes: item.speaker_notes,
-             content_html: `<div class="h-full flex flex-col justify-center items-center"><h1 class="text-6xl font-bold mb-4">${item.title}</h1><p class="text-xl opacity-70">正在生成内容...</p></div>`,
-             isGenerated: false,
-             isLoading: false
-           }));
-
-           setState(prev => ({
-             ...prev,
-             title: text.substring(0, 30),
-             slides: newSlides,
-             globalStyle: theme
-           }));
-           
-           setActiveSlideId(newSlides[0].id);
-           addMessage('assistant', `我已根据“${text}”为您生成了包含 ${newSlides.length} 页幻灯片的大纲。已应用 ${theme.themeName} 主题。`);
-           
-           // Trigger generation for first slide automatically
-           triggerSlideGeneration(newSlides[0].id, newSlides[0], theme);
-        } else {
-            addMessage('assistant', "无法生成大纲，请提供更多关于演示文稿的细节。");
-        }
-      } 
-      // SCENARIO 2: Has slides -> Refinement or Global Change
-      else {
-        // Simple heuristic for Designer request
-        if (text.toLowerCase().includes('color') || text.toLowerCase().includes('style') || text.toLowerCase().includes('theme') || text.includes('颜色') || text.includes('风格')) {
-            setMode(AgentMode.DESIGNER);
-            const newTheme = await generateTheme(text);
-            setState(prev => ({ ...prev, globalStyle: newTheme }));
-            addMessage('assistant', `已更新主题为 ${newTheme.themeName} (主色: ${newTheme.mainColor}, 强调色: ${newTheme.accentColor})`);
-        } 
-        // Otherwise, it's a Coder request for the ACTIVE slide
-        else if (activeSlideId) {
-            setMode(AgentMode.CODER);
-            const slide = state.slides.find(s => s.id === activeSlideId);
-            if (slide) {
-                await triggerSlideGeneration(slide.id, slide, state.globalStyle, text);
-                addMessage('assistant', `已根据您的反馈更新幻灯片“${slide.title}”。`);
-            }
-        }
+            setState(prev => ({
+                ...prev,
+                slides: newSlides,
+                stage: ProjectStage.SCRIPT // Auto advance to Script stage
+            }));
+            
+            setActiveSlideId(newSlides[0].id);
+            addMessage('assistant', `已根据您的文章拆解出 ${newSlides.length} 个分镜镜头。现已进入【脚本模式】，请检查并调整旁白。`);
+          }
+      } catch (e) {
+          addMessage('system', "生成脚本失败: " + (e as Error).message);
+      } finally {
+          setIsProcessing(false);
+          setMode(AgentMode.IDLE);
       }
-    } catch (error) {
-      console.error(error);
-      addMessage('system', "处理您的请求时发生错误。");
-    } finally {
-      setIsProcessing(false);
-      setMode(AgentMode.IDLE);
-    }
   };
 
-  const triggerSlideGeneration = async (id: string, slideMetadata: Slide, style: GlobalStyle, refinementInstruction?: string) => {
-    setState(prev => ({
-        ...prev,
-        slides: prev.slides.map(s => s.id === id ? { ...s, isLoading: true } : s)
-    }));
+  // 2. VISUAL STAGE: Generate HTML for a slide
+  const handleGenerateSlideVisual = async (slideId: string, customInstruction?: string) => {
+      const slide = state.slides.find(s => s.id === slideId);
+      if (!slide) return;
 
-    try {
-        const html = await generateSlideHtml(slideMetadata, style, refinementInstruction);
+      setState(prev => ({
+        ...prev,
+        slides: prev.slides.map(s => s.id === slideId ? { ...s, isLoading: true } : s)
+      }));
+
+      try {
+        // If we have custom instructions (from chat), use them. 
+        // Otherwise generate based on the slide metadata.
+        const html = await generateSlideHtml(slide, state.globalStyle, customInstruction);
+        
         setState(prev => ({
             ...prev,
-            slides: prev.slides.map(s => s.id === id ? { 
+            slides: prev.slides.map(s => s.id === slideId ? { 
                 ...s, 
                 content_html: html,
                 isGenerated: true,
                 isLoading: false 
             } : s)
         }));
-    } catch (e) {
-        console.error("Failed to generate slide", e);
-        setState(prev => ({
+      } catch (e) {
+         setState(prev => ({
             ...prev,
-            slides: prev.slides.map(s => s.id === id ? { ...s, isLoading: false } : s)
-        }));
+            slides: prev.slides.map(s => s.id === slideId ? { ...s, isLoading: false } : s)
+         }));
+      }
+  };
+
+  // 3. CHAT HANDLER (Context Aware)
+  const handleSendMessage = async (text: string) => {
+    addMessage('user', text);
+    
+    // Design Mode Check (Global)
+    if (text.toLowerCase().includes('color') || text.includes('颜色') || text.includes('风格')) {
+        setIsProcessing(true);
+        setMode(AgentMode.DESIGNER);
+        const newTheme = await generateTheme(text);
+        setState(prev => ({ ...prev, globalStyle: newTheme }));
+        addMessage('assistant', `主题已更新：${newTheme.themeName}`);
+        setIsProcessing(false);
+        setMode(AgentMode.IDLE);
+        return;
+    }
+
+    // Context specific handling
+    if (state.stage === ProjectStage.STORY) {
+        // In Story mode, chat is just a writing assistant (MVP: simple echo/instruction)
+        addMessage('assistant', "请在左侧编辑器完善文案。完成后点击顶部的“AI 拆解”按钮。");
+    } 
+    else if (state.stage === ProjectStage.SCRIPT) {
+        // In Script mode, users might ask to add slides or merge slides (Not impl in MVP yet)
+        addMessage('assistant', "当前处于脚本模式。您可以在右侧列表选择分镜，并编辑具体的旁白和时长。确认无误后，请切换到【视觉】模式生成画面。");
+    }
+    else if (state.stage === ProjectStage.VISUAL) {
+        // In Visual mode, chat generates/modifies code
+        if (activeSlideId) {
+            setIsProcessing(true);
+            setMode(AgentMode.CODER);
+            await handleGenerateSlideVisual(activeSlideId, text);
+            addMessage('assistant', "幻灯片视觉已更新。");
+            setIsProcessing(false);
+            setMode(AgentMode.IDLE);
+        } else {
+            addMessage('assistant', "请先选择一张幻灯片。");
+        }
     }
   };
 
-  const handleSelectSlide = (id: string) => {
-    setActiveSlideId(id);
-    const slide = state.slides.find(s => s.id === id);
-    if (slide && !slide.isGenerated && !slide.isLoading) {
-        triggerSlideGeneration(id, slide, state.globalStyle);
+  // --- RENDERERS ---
+
+  // Renders the Middle Panel based on Stage
+  const renderMainArea = () => {
+    switch (state.stage) {
+        case ProjectStage.STORY:
+            return (
+                <ArticleEditor 
+                    content={state.sourceMaterial}
+                    onChange={(text) => setState(prev => ({ ...prev, sourceMaterial: text }))}
+                    onGenerateScript={handleGenerateScriptFromArticle}
+                    isProcessing={isProcessing}
+                />
+            );
+        
+        case ProjectStage.SCRIPT:
+            // Script View: List on left (wider), Script Editor on right
+            return (
+                <div className="flex h-full">
+                     <div className="w-1/3 border-r border-gray-800 bg-gray-900 flex flex-col">
+                        <SlideList 
+                            slides={state.slides} 
+                            activeId={activeSlideId || ''} 
+                            onSelect={setActiveSlideId} 
+                        />
+                     </div>
+                     <div className="flex-1 bg-gray-950 flex flex-col">
+                        {activeSlide ? (
+                            <ScriptEditor 
+                                slide={activeSlide} 
+                                onSave={(id, narr, dur) => setState(prev => ({
+                                    ...prev,
+                                    slides: prev.slides.map(s => s.id === id ? { ...s, narration: narr, duration: dur } : s)
+                                }))} 
+                            />
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center text-gray-500">
+                                请选择分镜进行编辑
+                            </div>
+                        )}
+                     </div>
+                </div>
+            );
+
+        case ProjectStage.VISUAL:
+        case ProjectStage.EXPORT:
+            // The Classic View: List -> Chat -> Preview
+            return (
+                 <div className="flex h-full">
+                    {/* List */}
+                    <SlideList 
+                        slides={state.slides} 
+                        activeId={activeSlideId || ''} 
+                        onSelect={(id) => {
+                            setActiveSlideId(id);
+                            // Auto-generate if not generated when clicking in Visual Mode
+                            const slide = state.slides.find(s => s.id === id);
+                            if (slide && !slide.isGenerated && !slide.isLoading) {
+                                handleGenerateSlideVisual(id);
+                            }
+                        }} 
+                    />
+                    
+                    {/* Chat & Code Editor */}
+                    <div className="w-80 flex flex-col border-r border-gray-800 bg-gray-900 border-l border-gray-800">
+                         <div className={`flex-1 overflow-hidden flex flex-col ${editorMode === 'code' ? 'h-1/2' : 'h-full'}`}>
+                             <ChatInterface 
+                                messages={messages} 
+                                onSendMessage={handleSendMessage} 
+                                isProcessing={isProcessing}
+                                mode={mode}
+                             />
+                         </div>
+                         {activeSlide && editorMode === 'code' && (
+                            <div className="h-1/2 flex-1 border-t border-gray-800">
+                                <CodeEditor 
+                                    slide={activeSlide} 
+                                    onSave={(id, html) => setState(prev => ({
+                                        ...prev,
+                                        slides: prev.slides.map(s => s.id === id ? { ...s, content_html: html } : s)
+                                    }))} 
+                                />
+                            </div>
+                         )}
+                    </div>
+
+                    {/* Preview Area */}
+                    <div className="flex-1 flex flex-col bg-gray-950 relative">
+                        {/* Toolbar */}
+                        <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-gray-900">
+                            <h1 className="font-bold text-gray-300 text-sm">{state.title}</h1>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => setIsPresenting(true)}
+                                    className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500"
+                                >
+                                    <i className="fa-solid fa-play mr-2"></i> 演示
+                                </button>
+                                <button 
+                                    onClick={() => setEditorMode(editorMode === 'code' ? 'none' : 'code')}
+                                    className={`text-xs px-3 py-1.5 rounded border ${editorMode === 'code' ? 'bg-blue-900 border-blue-500' : 'border-gray-700'}`}
+                                >
+                                    <i className="fa-solid fa-code"></i>
+                                </button>
+                                {state.stage === ProjectStage.EXPORT && (
+                                    <button 
+                                        className="text-xs px-3 py-1.5 rounded bg-purple-600 text-white hover:bg-purple-500 ml-2"
+                                        onClick={() => alert("视频合成功能开发中... (Remotion Integration)")}
+                                    >
+                                        <i className="fa-solid fa-film mr-2"></i> 导出视频
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 p-8 bg-black/50 flex items-center justify-center">
+                            <SlidePreview slide={activeSlide} globalStyle={state.globalStyle} />
+                        </div>
+                    </div>
+                 </div>
+            );
+        default:
+            return null;
     }
-  };
-
-  const handleManualCodeSave = (id: string, newHtml: string) => {
-      setState(prev => ({
-          ...prev,
-          slides: prev.slides.map(s => s.id === id ? { ...s, content_html: newHtml } : s)
-      }));
-  };
-
-  // Export static HTML
-  const handleDownload = () => {
-      const fullHtml = generateFullPresentationHtml(state.slides, state.globalStyle);
-      const blob = new Blob([fullHtml], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `presentation-${state.projectId}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="flex h-screen w-screen text-gray-100 font-sans overflow-hidden">
-      {/* LEFT: Sidebar List */}
-      <SlideList 
-        slides={state.slides} 
-        activeId={activeSlideId || ''} 
-        onSelect={handleSelectSlide} 
+    <div className="flex h-screen w-screen text-gray-100 font-sans overflow-hidden bg-black">
+      {/* 1. Global Navigation */}
+      <StageSidebar 
+        currentStage={state.stage} 
+        onSetStage={(stage) => setState(prev => ({ ...prev, stage }))} 
       />
 
-      {/* MIDDLE: Chat & Editor */}
-      <div className="w-96 flex flex-col border-r border-gray-800 bg-gray-900 transition-all duration-300">
-        <div className={`flex-1 overflow-hidden flex flex-col ${showCode ? 'h-1/2' : 'h-full'}`}>
-             <ChatInterface 
-                messages={messages} 
-                onSendMessage={handleSendMessage} 
-                isProcessing={isProcessing}
-                mode={mode}
-             />
-        </div>
-        {activeSlide && showCode && (
-            <div className="h-1/2 flex-1 overflow-hidden">
-                <CodeEditor slide={activeSlide} onSave={handleManualCodeSave} />
-            </div>
-        )}
+      {/* 2. Main Workspace (Changes based on Stage) */}
+      <div className="flex-1 h-full overflow-hidden relative">
+          {renderMainArea()}
       </div>
 
-      {/* RIGHT: Preview */}
-      <div className="flex-1 flex flex-col bg-gray-950 relative">
-        {/* Toolbar */}
-        <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-gray-900">
-            <h1 className="font-bold text-gray-300 text-sm tracking-widest truncate max-w-xs">{state.title}</h1>
-            <div className="flex gap-3">
-                 <button 
-                    onClick={() => setIsPresenting(true)}
-                    className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors font-semibold shadow-lg shadow-blue-900/50"
-                 >
-                    <i className="fa-solid fa-play mr-2"></i>
-                    演示动画
-                 </button>
-                 <button 
-                    onClick={() => setShowCode(!showCode)}
-                    className={`text-xs px-3 py-1.5 rounded border transition-colors ${showCode ? 'bg-blue-900/50 border-blue-500 text-blue-200' : 'border-gray-700 text-gray-400 hover:text-white'}`}
-                 >
-                    <i className="fa-solid fa-code mr-2"></i>
-                    {showCode ? '隐藏代码' : '显示代码'}
-                 </button>
-                 <button 
-                    onClick={handleDownload}
-                    className="text-xs px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-white transition-colors"
-                 >
-                    <i className="fa-solid fa-download mr-2"></i>
-                    导出HTML
-                 </button>
-            </div>
-        </div>
-        
-        {/* Main Canvas */}
-        <div className="flex-1 p-8 bg-black/50 overflow-hidden flex items-center justify-center">
-            <SlidePreview slide={activeSlide} globalStyle={state.globalStyle} />
-        </div>
-
-        {/* Note Display (Optional footer) */}
-        {activeSlide && (
-             <div className="h-12 border-t border-gray-800 bg-gray-900 flex items-center px-4 text-xs text-gray-500 font-mono">
-                <span className="font-bold text-gray-400 mr-2">演讲备注:</span>
-                <span className="truncate">{activeSlide.speaker_notes}</span>
-             </div>
-        )}
-      </div>
-
-      {/* NEW Presentation Runner Overlay */}
       {isPresenting && (
           <PresentationRunner 
               slides={state.slides} 
