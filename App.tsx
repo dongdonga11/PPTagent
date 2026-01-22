@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PresentationState, Slide, ChatMessage, AgentMode, GlobalStyle, ProjectStage } from './types';
@@ -7,10 +8,11 @@ import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
 import CodeEditor from './components/CodeEditor';
-import ScriptEditor from './components/ScriptEditor';
+import ScriptStoryboard from './components/ScriptStoryboard'; // NEW
 import PresentationRunner from './components/PresentationRunner';
-import VideoStage from './components/VideoStage'; // Import VideoStage
-import { generatePresentationOutline, generateSlideHtml, generateTheme, generateFullPresentationHtml } from './services/geminiService';
+import VideoStage from './components/VideoStage'; 
+import { generatePresentationOutline, generateSlideHtml, generateTheme } from './services/geminiService';
+import { calculateDuration } from './utils/scriptUtils'; // NEW
 
 const DEFAULT_STYLE: GlobalStyle = {
   themeName: 'SpaceDark',
@@ -59,27 +61,28 @@ const App: React.FC = () => {
 
   // --- ACTIONS ---
   
-  // 1. STORY STAGE: Generate Outline from Article
+  // 1. STORY STAGE: A2S - Article to Scenes
   const handleGenerateScriptFromArticle = async () => {
       if (!state.sourceMaterial.trim()) return;
       
       setIsProcessing(true);
       setMode(AgentMode.PLANNER);
-      addMessage('user', "请根据文案生成分镜脚本...");
+      addMessage('user', "正在启动脚本工厂，拆解分镜中...");
       
       try {
-          // Pass the full source material to the Planner
-          const outline = await generatePresentationOutline(state.sourceMaterial);
+          // Pass the full source material to the Planner (Director Mode)
+          const scenes = await generatePresentationOutline(state.sourceMaterial);
           
-          if (outline.length > 0) {
-            const newSlides: Slide[] = outline.map(item => ({
+          if (scenes.length > 0) {
+            const newSlides: Slide[] = scenes.map(item => ({
                 id: uuidv4(),
                 title: item.title,
                 visual_intent: item.visual_intent,
+                visual_layout: item.visual_layout || 'Cover', // Layout from AI
                 speaker_notes: item.speaker_notes || '',
-                narration: item.narration || `这是关于${item.title}的讲解。`,
-                duration: item.duration || 10,
-                content_html: `<div class="h-full flex flex-col justify-center items-center"><h1 class="text-6xl font-bold mb-4" data-motion="fade-up">${item.title}</h1><p class="text-xl opacity-70" data-motion="fade-up">等待视觉生成...</p></div>`,
+                narration: item.narration || '',
+                duration: item.duration || calculateDuration(item.narration || ''),
+                content_html: '', // Empty initially, wait for visual generation
                 isGenerated: false,
                 isLoading: false
             }));
@@ -87,49 +90,39 @@ const App: React.FC = () => {
             setState(prev => ({
                 ...prev,
                 slides: newSlides,
-                stage: ProjectStage.SCRIPT // Auto advance to Script stage
+                stage: ProjectStage.SCRIPT // Auto advance to Script Factory
             }));
             
             setActiveSlideId(newSlides[0].id);
-            addMessage('assistant', `已根据您的文章拆解出 ${newSlides.length} 个分镜镜头。现已进入【脚本模式】，请检查并调整旁白。`);
+            addMessage('assistant', `✅ 拆解完成！共生成 ${newSlides.length} 个分镜场景。已切换至【脚本工厂】模式，请微调口播文案和布局。`);
           }
       } catch (e) {
-          addMessage('system', "生成脚本失败: " + (e as Error).message);
+          addMessage('system', "拆解失败: " + (e as Error).message);
       } finally {
           setIsProcessing(false);
           setMode(AgentMode.IDLE);
       }
   };
 
-  // 2. VISUAL STAGE: Generate HTML for a slide
+  // 2. VISUAL STAGE (Can be triggered from Script Factory now)
   const handleGenerateSlideVisual = async (slideId: string, customInstruction?: string) => {
       const slide = state.slides.find(s => s.id === slideId);
       if (!slide) return;
 
-      setState(prev => ({
-        ...prev,
-        slides: prev.slides.map(s => s.id === slideId ? { ...s, isLoading: true } : s)
-      }));
+      // Optimistic update
+      handleSlideUpdate(slideId, { isLoading: true });
 
       try {
-        // If we have custom instructions (from chat), use them. 
-        // Otherwise generate based on the slide metadata.
         const html = await generateSlideHtml(slide, state.globalStyle, customInstruction);
         
-        setState(prev => ({
-            ...prev,
-            slides: prev.slides.map(s => s.id === slideId ? { 
-                ...s, 
-                content_html: html,
-                isGenerated: true,
-                isLoading: false 
-            } : s)
-        }));
+        handleSlideUpdate(slideId, { 
+            content_html: html,
+            isGenerated: true,
+            isLoading: false 
+        });
       } catch (e) {
-         setState(prev => ({
-            ...prev,
-            slides: prev.slides.map(s => s.id === slideId ? { ...s, isLoading: false } : s)
-         }));
+         handleSlideUpdate(slideId, { isLoading: false });
+         console.error(e);
       }
   };
 
@@ -154,7 +147,7 @@ const App: React.FC = () => {
         addMessage('assistant', "请在左侧编辑器完善文案。完成后点击顶部的“AI 拆解”按钮。");
     } 
     else if (state.stage === ProjectStage.SCRIPT) {
-        addMessage('assistant', "当前处于脚本模式。您可以在右侧列表选择分镜，并编辑具体的旁白和时长。确认无误后，请切换到【视觉】模式生成画面。");
+        addMessage('assistant', "您在脚本工厂中。修改左侧卡片的文字会自动更新预估时长。点击'生成画面'预览视觉效果。");
     }
     else if (state.stage === ProjectStage.VISUAL) {
         if (activeSlideId) {
@@ -164,11 +157,7 @@ const App: React.FC = () => {
             addMessage('assistant', "幻灯片视觉已更新。");
             setIsProcessing(false);
             setMode(AgentMode.IDLE);
-        } else {
-            addMessage('assistant', "请先选择一张幻灯片。");
         }
-    } else if (state.stage === ProjectStage.EXPORT) {
-        addMessage('assistant', "视频合成中心: 在时间轴上点击片段可以修改时长和字幕。");
     }
   };
 
@@ -188,33 +177,19 @@ const App: React.FC = () => {
             );
         
         case ProjectStage.SCRIPT:
-            // Script View: List on left (wider), Script Editor on right
+            // NEW: Script Factory View
             return (
-                <div className="flex h-full">
-                     <div className="w-1/3 border-r border-gray-800 bg-gray-900 flex flex-col">
-                        <SlideList 
-                            slides={state.slides} 
-                            activeId={activeSlideId || ''} 
-                            onSelect={setActiveSlideId} 
-                        />
-                     </div>
-                     <div className="flex-1 bg-gray-950 flex flex-col">
-                        {activeSlide ? (
-                            <ScriptEditor 
-                                slide={activeSlide} 
-                                onSave={(id, narr, dur) => handleSlideUpdate(id, { narration: narr, duration: dur })} 
-                            />
-                        ) : (
-                            <div className="flex-1 flex items-center justify-center text-gray-500">
-                                请选择分镜进行编辑
-                            </div>
-                        )}
-                     </div>
-                </div>
+                <ScriptStoryboard 
+                    slides={state.slides}
+                    activeSlideId={activeSlideId}
+                    onSelect={setActiveSlideId}
+                    onUpdateSlide={handleSlideUpdate}
+                    globalStyle={state.globalStyle}
+                    onGenerateVisual={(id) => handleGenerateSlideVisual(id)}
+                />
             );
 
         case ProjectStage.EXPORT:
-            // Render Studio (Video Editor)
             return (
                 <VideoStage 
                     slides={state.slides}
@@ -225,24 +200,15 @@ const App: React.FC = () => {
 
         case ProjectStage.VISUAL:
         default:
-            // The Classic View: List -> Chat -> Preview
+            // Classic View for fine-tuning
             return (
                  <div className="flex h-full">
-                    {/* List */}
                     <SlideList 
                         slides={state.slides} 
                         activeId={activeSlideId || ''} 
-                        onSelect={(id) => {
-                            setActiveSlideId(id);
-                            // Auto-generate if not generated when clicking in Visual Mode
-                            const slide = state.slides.find(s => s.id === id);
-                            if (slide && !slide.isGenerated && !slide.isLoading) {
-                                handleGenerateSlideVisual(id);
-                            }
-                        }} 
+                        onSelect={setActiveSlideId} 
                     />
                     
-                    {/* Chat & Code Editor */}
                     <div className="w-80 flex flex-col border-r border-gray-800 bg-gray-900 border-l border-gray-800">
                          <div className={`flex-1 overflow-hidden flex flex-col ${editorMode === 'code' ? 'h-1/2' : 'h-full'}`}>
                              <ChatInterface 
@@ -262,9 +228,7 @@ const App: React.FC = () => {
                          )}
                     </div>
 
-                    {/* Preview Area */}
                     <div className="flex-1 flex flex-col bg-gray-950 relative">
-                        {/* Toolbar */}
                         <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-gray-900">
                             <h1 className="font-bold text-gray-300 text-sm">{state.title}</h1>
                             <div className="flex gap-2">
@@ -294,13 +258,11 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen text-gray-100 font-sans overflow-hidden bg-black">
-      {/* 1. Global Navigation */}
       <StageSidebar 
         currentStage={state.stage} 
         onSetStage={(stage) => setState(prev => ({ ...prev, stage }))} 
       />
 
-      {/* 2. Main Workspace (Changes based on Stage) */}
       <div className="flex-1 h-full overflow-hidden relative">
           {renderMainArea()}
       </div>

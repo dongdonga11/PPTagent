@@ -1,12 +1,20 @@
 
+export type SlideLayoutType = 'Cover' | 'SectionTitle' | 'Bullets' | 'SplitLeft' | 'SplitRight' | 'BigNumber' | 'Quote' | 'GridFeatures';
+
 export interface Slide {
   id: string;
   title: string;
-  visual_intent: string;
-  speaker_notes: string; // Internal notes / context
-  narration: string; // The exact voiceover script for the video
+  // Visual Layer
+  visual_intent: string; // Description for the AI Coder
+  visual_layout: SlideLayoutType; // Structured layout type for consistency
+  content_html: string; // The rendered HTML
+  
+  // Audio Layer (The Script)
+  narration: string; // The exact voiceover script
   duration: number; // Estimated duration in seconds
-  content_html: string; // The full <section> HTML
+  speaker_notes: string;
+  
+  // State
   isGenerated: boolean;
   isLoading: boolean;
 }
@@ -19,17 +27,17 @@ export interface GlobalStyle {
 }
 
 export enum ProjectStage {
-  STORY = 'STORY',       // Step 1: Write the article/source text
-  SCRIPT = 'SCRIPT',     // Step 2: Breakdown into slides/scenes & adjust narration
-  VISUAL = 'VISUAL',     // Step 3: Generate HTML/CSS visuals
-  EXPORT = 'EXPORT'      // Step 4: Finalize and Export
+  STORY = 'STORY',       // Step 1: Write the article
+  SCRIPT = 'SCRIPT',     // Step 2: A2S - Breakdown into Scenes (Script Engine)
+  VISUAL = 'VISUAL',     // Step 3: AI Coder - Generate HTML
+  EXPORT = 'EXPORT'      // Step 4: Finalize
 }
 
 export interface PresentationState {
   projectId: string;
   title: string;
-  stage: ProjectStage;   // Current active stage
-  sourceMaterial: string; // The raw article/text
+  stage: ProjectStage;
+  sourceMaterial: string;
   slides: Slide[];
   globalStyle: GlobalStyle;
 }
@@ -42,8 +50,8 @@ export interface ChatMessage {
 }
 
 export enum AgentMode {
-  PLANNER = 'PLANNER', // Generating Outline
-  DESIGNER = 'DESIGNER', // Setting styles
-  CODER = 'CODER', // Generating HTML
+  PLANNER = 'PLANNER', 
+  DESIGNER = 'DESIGNER', 
+  CODER = 'CODER', 
   IDLE = 'IDLE'
 }
