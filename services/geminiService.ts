@@ -117,26 +117,34 @@ export const generateSlideHtml = async (
   `;
 
   const systemPrompt = `
-    你是一个精通 Tailwind CSS 的前端专家。
+    你是一个精通 Tailwind CSS 和动画编排的前端专家。
     你的任务：生成单个幻灯片的内容 HTML。
     
-    核心布局规则（必须严格遵守）：
-    1. **结构容器**：最外层必须是一个 \`<div class="w-full h-full flex flex-col ...">\`。不要使用 <section>。
-    2. **16:9 适配**：内容将在一个固定比例（16:9）的容器中渲染。使用 flexbox 或 grid 确保内容垂直分布合理，**不要溢出**。
-    3. **字号策略**：因为是演示文稿，字体要大。
-       - 标题: text-5xl 或 text-6xl (font-bold)
-       - 正文: text-2xl 或 text-3xl
-       - 次要信息: text-xl
-    4. **颜色使用**：
-       - 使用 style="color: ${globalStyle.accentColor}" 来高亮关键词。
-       - 背景颜色将由父容器处理，你只需要处理文字和内部元素的颜色。默认文字颜色应为白色或浅灰（假设背景深色），或者根据 Global Style 调整。
-    5. **精简内容**：将长文本转化为列表 (ul/li) 或卡片 (cards)。
+    核心布局规则：
+    1. **结构容器**：最外层必须是一个 \`<div class="w-full h-full flex flex-col ...">\`。
+    2. **16:9 适配**：内容将在一个固定比例（16:9）的容器中渲染。
+    3. **字号策略**：标题(text-5xl+), 正文(text-2xl+)。
+    4. **颜色使用**：使用 style="color: ${globalStyle.accentColor}" 高亮。
+    
+    🌟 关键：动画编排 (Motion Choreography) 🌟
+    你必须充当“动画导演”。请为页面上的关键元素添加 \`data-motion\` 属性，以便播放器按顺序播放动画。
+    
+    可用动画类型 (data-motion):
+    - "fade-up": 适用于标题、段落 (向上淡入)
+    - "fade-in": 适用于背景图、大图 (渐显)
+    - "zoom-in": 适用于强调的数据、图标、核心卡片 (缩放出现)
+    - "slide-right": 适用于列表项、步骤条 (从左侧滑入)
+    
+    规则：
+    1. 给主标题添加 \`data-motion="fade-up"\`。
+    2. 给列表项 (li) 或卡片 (div) 添加 \`data-motion="slide-right"\` 或 \`data-motion="fade-up"\`。
+    3. 这里的动画由外部 JS 控制，你**不需要**写 keyframes 或 style 动画代码，只需要打上 data 标签即可。
+    4. **不要**添加 opacity-0 类，播放器会自动处理初始状态。
     
     技术约束：
     1. 不要返回 Markdown 代码块。直接返回 HTML 字符串。
-    2. 使用 FontAwesome 图标增强视觉效果。
-    3. 如果需要图表，使用 CSS 绘制简单的柱状图/进度条，或者使用 picsum.photos 图片。
-    4. 内容必须是简体中文。
+    2. 使用 FontAwesome 图标。
+    3. 内容必须是简体中文。
   `;
 
   const response = await ai.models.generateContent({
@@ -183,63 +191,97 @@ export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle
             }
             .slide-content {
                 width: 100%;
-                max-width: 1280px; /* Max width for 16:9 feel on wide screens */
+                max-width: 1280px; 
                 aspect-ratio: 16/9;
                 padding: 2rem;
                 display: flex;
                 flex-direction: column;
             }
-            /* Transition styles */
-            .fade-enter { opacity: 0; transform: translateX(20px); transition: all 0.5s ease; }
-            .fade-enter-active { opacity: 1; transform: translateX(0); }
+            
+            /* Animation States */
+            [data-motion] {
+                opacity: 0;
+                transition: all 0.5s ease-out;
+            }
+            
+            /* Active States */
+            .animate-active[data-motion="fade-up"] { opacity: 1; transform: translateY(0); }
+            [data-motion="fade-up"] { transform: translateY(30px); }
+
+            .animate-active[data-motion="fade-in"] { opacity: 1; }
+            
+            .animate-active[data-motion="zoom-in"] { opacity: 1; transform: scale(1); }
+            [data-motion="zoom-in"] { transform: scale(0.8); }
+
+            .animate-active[data-motion="slide-right"] { opacity: 1; transform: translateX(0); }
+            [data-motion="slide-right"] { transform: translateX(-30px); }
         </style>
     </head>
     <body>
         <div id="slide-container"></div>
 
-        <!-- Navigation Controls -->
         <div class="fixed bottom-4 right-4 flex gap-2">
-            <button onclick="prevSlide()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded">
-                <i class="fa-solid fa-chevron-left"></i>
-            </button>
-            <button onclick="nextSlide()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded">
-                <i class="fa-solid fa-chevron-right"></i>
-            </button>
+            <button onclick="prevStep()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded"><i class="fa-solid fa-chevron-left"></i></button>
+            <button onclick="nextStep()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded"><i class="fa-solid fa-chevron-right"></i></button>
         </div>
 
         <script>
             const slides = ${slidesData};
             let currentIndex = 0;
+            let currentStep = 0; // Animation step
             const container = document.getElementById('slide-container');
+
+            function updateAnimations() {
+                const elements = container.querySelectorAll('[data-motion]');
+                elements.forEach((el, index) => {
+                    if (index < currentStep) {
+                        el.classList.add('animate-active');
+                    } else {
+                        el.classList.remove('animate-active');
+                    }
+                });
+            }
 
             function renderSlide(index) {
                 if (index < 0) index = 0;
                 if (index >= slides.length) index = slides.length - 1;
                 currentIndex = index;
+                currentStep = 0; // Reset animation step on slide change
                 
-                // Simple fade replacement
                 container.style.opacity = '0';
-                
                 setTimeout(() => {
                     container.innerHTML = '<div class="slide-content">' + slides[currentIndex] + '</div>';
                     container.style.opacity = '1';
+                    // Initially hide everything (currentStep is 0)
+                    updateAnimations();
                 }, 200);
             }
 
-            function nextSlide() {
-                if (currentIndex < slides.length - 1) renderSlide(currentIndex + 1);
+            function nextStep() {
+                const elements = container.querySelectorAll('[data-motion]');
+                if (currentStep < elements.length) {
+                    currentStep++;
+                    updateAnimations();
+                } else if (currentIndex < slides.length - 1) {
+                    renderSlide(currentIndex + 1);
+                }
             }
 
-            function prevSlide() {
-                if (currentIndex > 0) renderSlide(currentIndex - 1);
+            function prevStep() {
+                if (currentStep > 0) {
+                    currentStep--;
+                    updateAnimations();
+                } else if (currentIndex > 0) {
+                    // Go to previous slide (reset to beginning of that slide for simplicity, or we could go to end)
+                    renderSlide(currentIndex - 1);
+                }
             }
 
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
-                if (e.key === 'ArrowLeft') prevSlide();
+                if (e.key === 'ArrowRight' || e.key === ' ') nextStep();
+                if (e.key === 'ArrowLeft') prevStep();
             });
 
-            // Init
             renderSlide(0);
         </script>
     </body>
