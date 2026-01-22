@@ -19,6 +19,7 @@ export interface Slide {
   narration: string; // The exact voiceover script with [M:x] tags
   duration: number; // Estimated duration in seconds
   speaker_notes: string;
+  audioData?: string; // Base64 encoded PCM audio data from Gemini TTS
   
   // Time-Driven Animation
   markers: AnimationMarker[]; // Calculated timestamps for the tags

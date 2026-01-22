@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Slide, GlobalStyle } from '../types';
 import { SlideRenderer } from './PresentationRunner';
 import { parseScriptAndAlign } from '../utils/timelineUtils';
+import { generateSpeech } from '../services/geminiService';
+import { audioController } from '../utils/audioUtils';
 
 interface VideoStageProps {
     slides: Slide[];
@@ -15,9 +17,10 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0); // in seconds
     const [selectedSlideId, setSelectedSlideId] = useState<string | null>(null);
+    const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
     
     // Refs
-    const spokenSlideId = useRef<string | null>(null);
+    const playingSlideId = useRef<string | null>(null);
 
     // --- COMPUTED ---
     const totalDuration = useMemo(() => slides.reduce((acc, s) => acc + s.duration, 0), [slides]);
@@ -55,21 +58,6 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         slides.find(s => s.id === selectedSlideId) || null, 
     [slides, selectedSlideId]);
 
-    // --- TTS ENGINE ---
-    const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null);
-    useEffect(() => {
-        const loadVoices = () => {
-            const voices = window.speechSynthesis.getVoices();
-            const zhVoice = voices.find(v => v.lang.includes('zh') && v.name.includes('Google')) || 
-                            voices.find(v => v.lang.includes('zh')) || 
-                            voices[0];
-            setVoice(zhVoice || null);
-        };
-        loadVoices();
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-        return () => window.speechSynthesis.cancel();
-    }, []);
-
     // --- PLAYBACK LOGIC ---
     useEffect(() => {
         let interval: any;
@@ -82,37 +70,41 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                 if (newTime >= totalDuration) {
                     setCurrentTime(totalDuration);
                     setIsPlaying(false);
-                    window.speechSynthesis.cancel();
+                    audioController.stop();
+                    playingSlideId.current = null;
                 } else {
                     setCurrentTime(newTime);
                 }
             }, 30);
         } else {
-             window.speechSynthesis.pause();
-             window.speechSynthesis.cancel();
-             spokenSlideId.current = null;
+             audioController.stop();
+             playingSlideId.current = null;
         }
         return () => clearInterval(interval);
     }, [isPlaying, totalDuration]);
 
-    // Trigger TTS
+    // --- AUDIO SYNC ---
     useEffect(() => {
         if (!isPlaying || !activeSlideInfo.slide) return;
         const SLIDE_ID = activeSlideInfo.slide.id;
         
-        if (spokenSlideId.current !== SLIDE_ID) {
-            window.speechSynthesis.cancel();
-            if (activeSlideInfo.slide.narration) {
-                // Remove markers for speech
-                const cleanText = activeSlideInfo.slide.narration.replace(/\[M\]|\[M:\d+\]|\[Next\]/g, '');
-                const utterance = new SpeechSynthesisUtterance(cleanText);
-                if (voice) utterance.voice = voice;
-                utterance.rate = 1;
-                window.speechSynthesis.speak(utterance);
+        // If we crossed into a new slide while playing
+        if (playingSlideId.current !== SLIDE_ID) {
+            
+            // Stop previous
+            audioController.stop();
+            
+            // Play new if exists
+            if (activeSlideInfo.slide.audioData) {
+                audioController.play(activeSlideInfo.slide.audioData).catch(err => console.error("Audio Play Error", err));
+            } else {
+                console.log("No AI audio generated for this slide yet.");
+                // Fallback to nothing (silent) or we could auto-generate, but that blocks UI
             }
-            spokenSlideId.current = SLIDE_ID;
+            
+            playingSlideId.current = SLIDE_ID;
         }
-    }, [activeSlideInfo.index, isPlaying, voice]);
+    }, [activeSlideInfo.index, isPlaying]); // Depend on index change
 
 
     // --- HANDLERS ---
@@ -121,8 +113,8 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
         const time = Number(e.target.value);
         setCurrentTime(time);
-        window.speechSynthesis.cancel();
-        spokenSlideId.current = null;
+        audioController.stop();
+        playingSlideId.current = null;
     };
 
     const handleClipClick = (e: React.MouseEvent, slide: Slide, start: number) => {
@@ -132,26 +124,36 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         setIsPlaying(false); // Pause editing
     };
 
-    const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!selectedSlide) return;
-        const newDuration = Math.max(1, Number(e.target.value));
-        // Need to re-align markers if duration changes? For now, keep absolute times or scale?
-        // Let's just update duration.
-        onSlideUpdate(selectedSlide.id, { duration: newDuration });
-    };
-
     const handleNarrationChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         if (!selectedSlide) return;
         const newText = e.target.value;
-        
-        // Live parsing of markers when text changes
-        // We preserve the Duration, but recalculate marker timestamps based on text flow
         const { markers } = parseScriptAndAlign(newText, selectedSlide.duration);
-
         onSlideUpdate(selectedSlide.id, { 
             narration: newText,
-            markers: markers
+            markers: markers,
+            audioData: undefined // Invalidate old audio
         });
+    };
+
+    const handleGenerateAudio = async () => {
+        if (!selectedSlide || !selectedSlide.narration) return;
+        setIsGeneratingAudio(true);
+        try {
+            const audioBase64 = await generateSpeech(selectedSlide.narration);
+            if (audioBase64) {
+                // Calculate precise duration from audio
+                const preciseDuration = audioController.getDuration(audioBase64);
+                
+                onSlideUpdate(selectedSlide.id, {
+                    audioData: audioBase64,
+                    duration: Math.ceil(preciseDuration) // Sync slide duration to audio length
+                });
+            }
+        } catch (error) {
+            alert("语音生成失败，请重试");
+        } finally {
+            setIsGeneratingAudio(false);
+        }
     };
 
     const formatTime = (seconds: number) => {
@@ -300,6 +302,11 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                                         <span className={`text-[10px] font-bold px-1.5 rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
                                                             {index + 1}
                                                         </span>
+                                                        {slide.audioData ? (
+                                                            <i className="fa-solid fa-microphone-lines text-green-400 text-[10px]" title="AI语音已生成"></i>
+                                                        ) : (
+                                                            <i className="fa-solid fa-microphone-slash text-gray-600 text-[10px]" title="无语音"></i>
+                                                        )}
                                                         <span className="text-[10px] text-gray-400 truncate font-mono">
                                                             {slide.title}
                                                         </span>
@@ -320,12 +327,38 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                     <div className="w-80 bg-[#161618] border-l border-gray-800 flex flex-col shadow-xl">
                         <div className="h-8 flex items-center px-4 bg-[#1e1e1e] border-b border-gray-800">
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                <i className="fa-solid fa-sliders mr-2"></i> 标记检查器
+                                <i className="fa-solid fa-sliders mr-2"></i> 语音与标记
                             </span>
                         </div>
                         
                         {selectedSlide ? (
                             <div className="flex-1 p-4 overflow-y-auto space-y-6">
+                                {/* Audio Generator */}
+                                <div className="bg-black/30 rounded p-3 border border-gray-800">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">AI 语音 (Gemini TTS)</label>
+                                        {selectedSlide.audioData && <span className="text-[10px] text-green-500"><i className="fa-solid fa-check"></i> 已生成</span>}
+                                    </div>
+                                    <button 
+                                        onClick={handleGenerateAudio}
+                                        disabled={isGeneratingAudio}
+                                        className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all
+                                            ${selectedSlide.audioData 
+                                                ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                                                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white shadow-lg'}
+                                        `}
+                                    >
+                                        {isGeneratingAudio ? (
+                                            <><i className="fa-solid fa-circle-notch fa-spin"></i> 生成中...</>
+                                        ) : (
+                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成语音' : '生成 AI 语音'}</>
+                                        )}
+                                    </button>
+                                    <p className="text-[10px] text-gray-500 mt-2">
+                                        生成后，分镜时长将自动对齐语音长度。
+                                    </p>
+                                </div>
+
                                 {/* Script Editing with Markers */}
                                 <div className="flex-1 flex flex-col">
                                     <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">包含标记的脚本</label>
@@ -335,15 +368,11 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                         className="w-full bg-[#0F0F12] border border-gray-700 rounded p-3 text-xs text-gray-300 leading-relaxed focus:border-blue-500 focus:outline-none resize-none h-40 custom-scrollbar font-mono"
                                         placeholder="输入旁白，使用 [M] 标记动画点..."
                                     />
-                                    <p className="text-[10px] text-gray-500 mt-2 flex items-center gap-1">
-                                        <i className="fa-solid fa-circle-info text-blue-400"></i>
-                                        提示：插入 <code>[M]</code> 来触发下一步动画。
-                                    </p>
                                 </div>
 
                                 {/* Marker List */}
                                 <div>
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">锚点列表 (自动计算)</label>
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">锚点列表</label>
                                     <div className="space-y-1">
                                         {selectedSlide.markers?.length === 0 && <div className="text-xs text-gray-600">无动画标记</div>}
                                         {selectedSlide.markers?.map((m) => (
@@ -358,7 +387,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-gray-600 p-8 text-center">
                                 <i className="fa-solid fa-arrow-pointer text-2xl mb-2 opacity-50"></i>
-                                <p className="text-xs">选择时间轴上的片段以编辑锚点</p>
+                                <p className="text-xs">选择时间轴上的片段以编辑语音</p>
                             </div>
                         )}
                     </div>

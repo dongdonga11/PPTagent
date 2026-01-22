@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Slide, GlobalStyle } from "../types";
 import { parseScriptAndAlign } from "../utils/timelineUtils";
 
@@ -9,6 +9,38 @@ const getAiClient = () => {
     throw new Error("API_KEY is missing from environment variables");
   }
   return new GoogleGenAI({ apiKey });
+};
+
+// --- TTS ENGINE ---
+export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string | undefined> => {
+  const ai = getAiClient();
+  
+  // Clean up text (remove markers)
+  const cleanText = text.replace(/\[M\]|\[M:\d+\]|\[Next\]/g, ' ').trim();
+
+  if (!cleanText) return undefined;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: cleanText }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voiceName },
+            },
+        },
+      },
+    });
+
+    // Extract base64 audio string
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return base64Audio;
+  } catch (error) {
+    console.error("Gemini TTS Error:", error);
+    throw error;
+  }
 };
 
 // --- AGENT A: PLANNER & DIRECTOR (A2S Engine) ---
