@@ -59,6 +59,60 @@ const App: React.FC = () => {
       }));
   };
 
+  // --- SLIDE CRUD OPERATIONS ---
+  const handleAddSlide = () => {
+      const newSlide: Slide = {
+          id: uuidv4(),
+          title: 'New Scene',
+          visual_intent: 'Enter visual description...',
+          visual_layout: 'Cover',
+          narration: 'New narration script...',
+          duration: 5,
+          markers: [],
+          content_html: '',
+          isGenerated: false,
+          isLoading: false,
+          speaker_notes: ''
+      };
+      setState(prev => ({ ...prev, slides: [...prev.slides, newSlide] }));
+  };
+
+  const handleDeleteSlide = (id: string) => {
+      if (confirm('确定要删除这个分镜吗？')) {
+        setState(prev => ({ ...prev, slides: prev.slides.filter(s => s.id !== id) }));
+        if (activeSlideId === id) setActiveSlideId(null);
+      }
+  };
+
+  const handleDuplicateSlide = (id: string) => {
+      const slide = state.slides.find(s => s.id === id);
+      if (!slide) return;
+      const newSlide = { 
+          ...slide, 
+          id: uuidv4(), 
+          title: slide.title + ' (Copy)',
+          audioData: undefined, // Don't copy audio blob ID as it needs regen usually, or deep copy logic needed
+          isGenerated: false // Reset visual state effectively or keep it? Let's reset to be safe
+      };
+      // Insert after current
+      const idx = state.slides.findIndex(s => s.id === id);
+      const newSlides = [...state.slides];
+      newSlides.splice(idx + 1, 0, newSlide);
+      setState(prev => ({ ...prev, slides: newSlides }));
+  };
+
+  const handleMoveSlide = (id: string, direction: number) => {
+      const idx = state.slides.findIndex(s => s.id === id);
+      if (idx === -1) return;
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= state.slides.length) return;
+      
+      const newSlides = [...state.slides];
+      const [temp] = newSlides.splice(idx, 1);
+      newSlides.splice(newIdx, 0, temp);
+      setState(prev => ({ ...prev, slides: newSlides }));
+  };
+
   // --- ACTIONS ---
   
   // 1. STORY STAGE: A2S - Article to Scenes
@@ -196,6 +250,11 @@ const App: React.FC = () => {
                     slides={state.slides}
                     globalStyle={state.globalStyle}
                     onSlideUpdate={handleSlideUpdate}
+                    // Pass CRUD handlers
+                    onAddSlide={handleAddSlide}
+                    onDeleteSlide={handleDeleteSlide}
+                    onDuplicateSlide={handleDuplicateSlide}
+                    onMoveSlide={handleMoveSlide}
                 />
             );
 

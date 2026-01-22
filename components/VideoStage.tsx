@@ -11,9 +11,22 @@ interface VideoStageProps {
     slides: Slide[];
     globalStyle: GlobalStyle;
     onSlideUpdate: (id: string, updates: Partial<Slide>) => void;
+    // New CRUD Props
+    onAddSlide: () => void;
+    onDeleteSlide: (id: string) => void;
+    onDuplicateSlide: (id: string) => void;
+    onMoveSlide: (id: string, direction: number) => void;
 }
 
-const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpdate }) => {
+const VideoStage: React.FC<VideoStageProps> = ({ 
+    slides, 
+    globalStyle, 
+    onSlideUpdate,
+    onAddSlide,
+    onDeleteSlide,
+    onDuplicateSlide,
+    onMoveSlide
+}) => {
     // --- STATE ---
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0); // in seconds
@@ -59,8 +72,12 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
             elapsed += slide.duration;
         }
         // Fallback for end of timeline
-        return { index: slides.length - 1, slide: slides[slides.length - 1], startTime: elapsed, localTime: 0 };
-    }, [currentTime, slides]);
+        if (slides.length > 0) {
+             const last = slides[slides.length - 1];
+             return { index: slides.length - 1, slide: last, startTime: totalDuration - last.duration, localTime: last.duration };
+        }
+        return { index: -1, slide: null, startTime: 0, localTime: 0 };
+    }, [currentTime, slides, totalDuration]);
 
     // Calculate current animation step based on markers
     const currentAnimationStep = useMemo(() => {
@@ -154,10 +171,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
 
     const handleNarrationChange = (newText: string) => {
         if (!selectedSlide) return;
-        // Live parsing of markers when text changes via Rich Editor
         const { markers } = parseScriptAndAlign(newText, selectedSlide.duration);
-        
-        // Optimization: Only update if text actually changed to avoid loop
         if (newText !== selectedSlide.narration) {
             onSlideUpdate(selectedSlide.id, { 
                 narration: newText,
@@ -173,12 +187,10 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         try {
             const audioBase64 = await generateSpeech(selectedSlide.narration);
             if (audioBase64) {
-                // Calculate precise duration from audio
                 const preciseDuration = audioController.getDuration(audioBase64);
-                
                 onSlideUpdate(selectedSlide.id, {
                     audioData: audioBase64,
-                    duration: Math.ceil(preciseDuration) // Sync slide duration to audio length
+                    duration: Math.ceil(preciseDuration)
                 });
             }
         } catch (error) {
@@ -206,12 +218,12 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                             <SlideRenderer
                                 key={activeSlideInfo.slide.id} 
                                 html={activeSlideInfo.slide.content_html}
-                                step={currentAnimationStep} // Driven by TIMELINE
+                                step={currentAnimationStep} 
                                 fontFamily={globalStyle.fontFamily}
                             />
                         )}
                     </div>
-                    {/* Subtitles (Cleaned) */}
+                    {/* Subtitles */}
                     <div className="absolute bottom-6 left-0 w-full px-12 text-center z-20 pointer-events-none">
                          <div className="inline-block bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/10">
                             <p className="text-lg font-medium text-yellow-300 drop-shadow-md font-sans">
@@ -231,10 +243,11 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                         </button>
                     )}
                 </div>
+                
                 {/* Time Display */}
                 <div className="absolute top-4 right-4 font-mono text-blue-400 bg-black/50 px-3 py-1 rounded text-sm border border-blue-900/30">
                     <span className="text-xs text-gray-400 mr-2">STEP {currentAnimationStep}</span>
-                    {formatTime(currentTime)}
+                    {formatTime(currentTime)} <span className="text-gray-600">/ {formatTime(totalDuration)}</span>
                 </div>
             </div>
 
@@ -248,127 +261,190 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                             <i className={`fa-solid ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
                         </button>
                         <div className="h-4 w-[1px] bg-gray-700"></div>
-                        <span className="text-xs text-gray-500">Timeline Editor</span>
+                        <span className="text-xs text-gray-500 font-bold tracking-wider">TIMELINE</span>
                     </div>
                     <div className="flex gap-2">
-                         {/* Optional Export Buttons */}
+                         <button 
+                            className="text-xs px-2 py-1 rounded bg-blue-900/50 text-blue-300 border border-blue-800 hover:bg-blue-800 transition-colors"
+                            onClick={() => alert("合成渲染功能需连接 Remotion 后端服务。当前仅为 Web 预览。")}
+                         >
+                            <i className="fa-solid fa-file-export mr-1"></i> 导出 Render
+                         </button>
                     </div>
                 </div>
 
                 <div className="flex-1 flex overflow-hidden">
-                    {/* A. TIMELINE TRACKS */}
-                    <div className="flex-1 flex flex-col relative overflow-hidden">
-                        {/* Ruler & Scrubber */}
-                        <div className="h-8 bg-[#161618] border-b border-gray-800 relative select-none">
-                            {/* Ruler Marks */}
-                            <div className="absolute inset-0 flex items-end">
-                                {Array.from({ length: Math.ceil(totalDuration / 5) + 1 }).map((_, i) => (
+                    
+                    {/* A. TRACK HEADERS (Left Sidebar) */}
+                    <div className="w-24 flex-shrink-0 bg-[#111] border-r border-gray-800 flex flex-col pt-8 text-[10px] font-bold text-gray-500 select-none">
+                        <div className="h-24 flex items-center justify-center border-b border-gray-800 bg-[#161616]">
+                            <span>VIDEO 1</span>
+                        </div>
+                        <div className="h-16 flex items-center justify-center border-b border-gray-800 bg-[#161616]">
+                            <span>AUDIO 1</span>
+                        </div>
+                    </div>
+
+                    {/* B. TIMELINE TRACKS (Right Scrollable) */}
+                    <div className="flex-1 flex flex-col relative overflow-hidden bg-[#0a0a0a]">
+                        
+                        {/* 1. Ruler */}
+                        <div className="h-8 bg-[#161618] border-b border-gray-800 relative select-none w-full">
+                            <div className="absolute inset-0 flex items-end pointer-events-none">
+                                {Array.from({ length: Math.ceil(totalDuration / 5) + 2 }).map((_, i) => (
                                     <div key={i} className="absolute bottom-0 h-2 border-l border-gray-600 text-[9px] text-gray-500 pl-1 pb-3" 
-                                         style={{ left: `${(i * 5 / totalDuration) * 100}%`}}>
+                                         style={{ left: `${(i * 5 / (totalDuration || 1)) * 100}%`}}>
                                         {formatTime(i * 5)}
                                     </div>
                                 ))}
                             </div>
+                            {/* Scrubber Input */}
                             <input 
-                                type="range" min={0} max={totalDuration} step={0.1}
+                                type="range" min={0} max={totalDuration || 1} step={0.1}
                                 value={currentTime} onChange={handleSeek}
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-50"
                             />
                             {/* Playhead */}
                             <div 
                                 className="absolute top-0 bottom-0 w-px bg-red-500 z-40 pointer-events-none"
-                                style={{ left: `${(currentTime / totalDuration) * 100}%` }}
+                                style={{ left: `${(currentTime / (totalDuration || 1)) * 100}%` }}
                             >
                                 <div className="w-3 h-3 bg-red-500 -ml-1.5 rotate-45 transform -translate-y-1.5 shadow"></div>
                             </div>
                         </div>
 
-                        {/* Tracks Area */}
-                        <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 relative bg-[#111] custom-scrollbar">
-                            <div 
-                                className="absolute top-0 bottom-0 w-px bg-red-500/50 z-30 pointer-events-none"
-                                style={{ left: `calc(${(currentTime / totalDuration) * 100}% + 16px)` }} 
-                            />
+                        {/* 2. Tracks Container */}
+                        <div className="flex-1 overflow-x-auto overflow-y-hidden relative custom-scrollbar">
+                            <div className="relative h-full min-w-full" style={{ width: '100%' }}>
+                                
+                                {/* Global Playhead Line (Vertical) */}
+                                <div 
+                                    className="absolute top-0 bottom-0 w-px bg-red-500/50 z-30 pointer-events-none"
+                                    style={{ left: `${(currentTime / (totalDuration || 1)) * 100}%` }} 
+                                />
 
-                            <div className="relative w-full h-full">
-                                {/* Track 1: Slides & Markers */}
-                                <div className="flex h-24 w-full bg-[#1a1a1a] rounded-lg overflow-hidden border border-gray-800">
+                                {/* TRACK 1: VIDEO (Slides) */}
+                                <div className="flex h-24 w-full bg-[#1a1a1a] border-b border-gray-800 items-center">
                                     {slides.map((slide, index) => {
+                                        const widthPercent = (slide.duration / (totalDuration || 1)) * 100;
+                                        const isSelected = selectedSlideId === slide.id;
                                         let start = 0;
                                         for(let i=0; i<index; i++) start += slides[i].duration;
-                                        
-                                        const widthPercent = (slide.duration / totalDuration) * 100;
-                                        const isSelected = selectedSlideId === slide.id;
-                                        const isActive = activeSlideInfo.index === index;
 
                                         return (
                                             <div 
                                                 key={slide.id}
-                                                className={`h-full relative group cursor-pointer transition-all duration-200 border-r border-black/50
-                                                    ${isSelected ? 'bg-blue-900/20 ring-1 ring-blue-500 z-10' : 'bg-gray-800 hover:bg-gray-700'}
+                                                className={`h-[90%] relative group cursor-pointer transition-all duration-200 border-r border-black/50 overflow-hidden mx-[1px] rounded-sm
+                                                    ${isSelected ? 'bg-indigo-900/40 ring-2 ring-indigo-500 z-10' : 'bg-gray-800 hover:bg-gray-700'}
                                                 `}
-                                                style={{ width: `${widthPercent}%` }}
+                                                style={{ width: `${widthPercent}%`, minWidth: '60px' }}
                                                 onClick={(e) => handleClipClick(e, slide, start)}
                                             >
-                                                {/* Markers Flags */}
+                                                {/* Markers Dots */}
                                                 {slide.markers?.map((marker, mIdx) => (
                                                     <div 
                                                         key={mIdx}
-                                                        className="absolute top-0 bottom-0 w-px bg-yellow-500/50 z-20 group-hover:bg-yellow-500"
+                                                        className="absolute top-0 bottom-0 w-px bg-yellow-400/30 z-0 pointer-events-none"
                                                         style={{ left: `${(marker.time / slide.duration) * 100}%` }}
-                                                        title={`Marker ${marker.id}: ${marker.time}s`}
                                                     >
-                                                        <div className="w-2 h-2 bg-yellow-500 text-[6px] text-black flex items-center justify-center rounded-sm -ml-1 mt-6 font-bold cursor-grab">
-                                                            {marker.id}
-                                                        </div>
+                                                        <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full -ml-[3px] mt-1"></div>
                                                     </div>
                                                 ))}
 
-                                                <div className="p-2 h-full flex flex-col justify-between overflow-hidden relative">
-                                                    <div className="flex items-center gap-2 z-10">
-                                                        <span className={`text-[10px] font-bold px-1.5 rounded ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                                                {/* Clip Content */}
+                                                <div className="p-2 h-full flex flex-col justify-between relative z-10">
+                                                    <div className="flex justify-between items-start">
+                                                        <span className={`text-[9px] font-bold px-1 rounded ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
                                                             {index + 1}
                                                         </span>
-                                                        {slide.audioData ? (
-                                                            <i className="fa-solid fa-microphone-lines text-green-400 text-[10px]" title="AI语音已生成"></i>
-                                                        ) : (
-                                                            <i className="fa-solid fa-robot text-gray-500 text-[10px]" title="预览语音 (Browser TTS)"></i>
-                                                        )}
-                                                        <span className="text-[10px] text-gray-400 truncate font-mono">
-                                                            {slide.title}
-                                                        </span>
+                                                        <span className="text-[9px] text-gray-400">{slide.duration}s</span>
                                                     </div>
-                                                    <span className="text-[9px] text-gray-500 text-right z-10">
-                                                        {slide.duration}s
+                                                    <span className="text-[10px] text-gray-300 truncate font-mono w-full block">
+                                                        {slide.title}
                                                     </span>
+                                                </div>
+
+                                                {/* HOVER ACTIONS (The Insert/Edit functionality) */}
+                                                <div className="absolute inset-0 bg-black/80 hidden group-hover:flex items-center justify-center gap-1 z-50 backdrop-blur-sm">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); onMoveSlide(slide.id, -1); }}
+                                                        className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center text-[10px]"
+                                                        title="向前移动"
+                                                    >
+                                                        <i className="fa-solid fa-chevron-left"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); onDeleteSlide(slide.id); }}
+                                                        className="w-5 h-5 rounded bg-red-900/50 hover:bg-red-600 text-red-200 hover:text-white flex items-center justify-center text-[10px]"
+                                                        title="删除"
+                                                    >
+                                                        <i className="fa-solid fa-trash"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); onDuplicateSlide(slide.id); }}
+                                                        className="w-5 h-5 rounded bg-blue-900/50 hover:bg-blue-600 text-blue-200 hover:text-white flex items-center justify-center text-[10px]"
+                                                        title="复制"
+                                                    >
+                                                        <i className="fa-solid fa-copy"></i>
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); onMoveSlide(slide.id, 1); }}
+                                                        className="w-5 h-5 rounded bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center text-[10px]"
+                                                        title="向后移动"
+                                                    >
+                                                        <i className="fa-solid fa-chevron-right"></i>
+                                                    </button>
                                                 </div>
                                             </div>
                                         );
                                     })}
+
+                                    {/* Add Slide Button at End */}
+                                    <button 
+                                        onClick={onAddSlide}
+                                        className="h-[80%] w-12 mx-2 border border-dashed border-gray-600 rounded flex items-center justify-center text-gray-500 hover:text-white hover:border-gray-400 transition-colors"
+                                        title="添加新场景"
+                                    >
+                                        <i className="fa-solid fa-plus"></i>
+                                    </button>
                                 </div>
+
+                                {/* TRACK 2: AUDIO (BGM Visualization Placeholder) */}
+                                <div className="flex h-16 w-full bg-[#111] border-b border-gray-800 items-center relative overflow-hidden">
+                                     {/* Fake Waveform Pattern */}
+                                     <div className="absolute inset-0 opacity-20 flex items-center gap-[2px]">
+                                        {Array.from({ length: 100 }).map((_, i) => (
+                                            <div key={i} className="w-1 bg-green-500 rounded-full" style={{ height: `${Math.random() * 80 + 20}%` }}></div>
+                                        ))}
+                                     </div>
+                                     <span className="relative z-10 text-[10px] text-gray-500 ml-4 bg-black/50 px-2 py-1 rounded border border-gray-700">
+                                        <i className="fa-solid fa-music mr-2"></i> Background Music (Placeholder)
+                                     </span>
+                                </div>
+
                             </div>
                         </div>
                     </div>
 
-                    {/* B. INSPECTOR (Right Side) */}
-                    <div className="w-96 bg-[#161618] border-l border-gray-800 flex flex-col shadow-xl">
+                    {/* C. INSPECTOR (Right Side) */}
+                    <div className="w-80 bg-[#161618] border-l border-gray-800 flex flex-col shadow-xl flex-shrink-0">
                         <div className="h-8 flex items-center px-4 bg-[#1e1e1e] border-b border-gray-800">
                             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                <i className="fa-solid fa-sliders mr-2"></i> 属性面板
+                                <i className="fa-solid fa-sliders mr-2"></i> 语音与标记
                             </span>
                         </div>
                         
                         {selectedSlide ? (
                             <div className="flex-1 p-4 overflow-y-auto space-y-6">
                                 {/* Audio Generator */}
-                                <div className={`rounded p-3 border ${selectedSlide.audioData ? 'bg-green-900/10 border-green-800' : 'bg-gray-800/50 border-gray-700'}`}>
+                                <div className="bg-black/30 rounded p-3 border border-gray-800">
                                     <div className="flex justify-between items-center mb-2">
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold">语音状态</label>
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">音频源 (Audio Source)</label>
                                         <div className="text-[10px]">
                                             {selectedSlide.audioData ? (
                                                 <span className="text-green-400 flex items-center gap-1"><i className="fa-brands fa-google"></i> Gemini TTS</span>
                                             ) : (
-                                                <span className="text-yellow-500 flex items-center gap-1"><i className="fa-solid fa-robot"></i> 浏览器预览 (未生成)</span>
+                                                <span className="text-gray-500 flex items-center gap-1"><i className="fa-solid fa-globe"></i> Browser TTS (Fallback)</span>
                                             )}
                                         </div>
                                     </div>
@@ -378,24 +454,22 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                         className={`w-full py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition-all
                                             ${selectedSlide.audioData 
                                                 ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                                                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white shadow-lg animate-pulse'}
+                                                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 text-white shadow-lg'}
                                         `}
                                     >
                                         {isGeneratingAudio ? (
                                             <><i className="fa-solid fa-circle-notch fa-spin"></i> 生成中...</>
                                         ) : (
-                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成 AI 语音' : '生成高音质语音'}</>
+                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成 AI 语音' : '生成 AI 语音 (High Quality)'}</>
                                         )}
                                     </button>
                                 </div>
 
-                                {/* Script Editing with DRAGGABLE Markers */}
+                                {/* Script Editing with Markers */}
                                 <div className="flex-1 flex flex-col h-64">
                                     <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">脚本编辑器 (可拖拽锚点)</label>
-                                    
-                                    {/* Replaced Textarea with Smart Editor */}
                                     <ScriptMarkerEditor 
-                                        key={selectedSlide.id} // Re-mount on slide change
+                                        key={selectedSlide.id}
                                         value={selectedSlide.narration}
                                         onChange={handleNarrationChange}
                                     />
@@ -403,24 +477,16 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
 
                                 {/* Marker List */}
                                 <div>
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">锚点时间表 (自动计算)</label>
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold block mb-2">锚点列表</label>
                                     <div className="space-y-1">
                                         {selectedSlide.markers?.length === 0 && <div className="text-xs text-gray-600">无动画标记</div>}
                                         {selectedSlide.markers?.map((m) => (
-                                            <div key={m.id} className="flex justify-between items-center bg-black/20 px-2 py-1 rounded border border-gray-800 group hover:border-yellow-500/50 transition-colors">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-4 h-4 rounded bg-yellow-500/20 text-yellow-500 text-[9px] flex items-center justify-center font-bold">⚑</span>
-                                                    <span className="text-xs text-gray-300 font-mono">Step {m.id}</span>
-                                                </div>
-                                                <span className="text-xs text-gray-400 font-mono group-hover:text-yellow-400">
-                                                    {m.time}s
-                                                </span>
+                                            <div key={m.id} className="flex justify-between items-center bg-black/20 px-2 py-1 rounded border border-gray-800">
+                                                <span className="text-xs text-yellow-500 font-mono font-bold">Marker {m.id}</span>
+                                                <span className="text-xs text-gray-400">@ {m.time}s</span>
                                             </div>
                                         ))}
                                     </div>
-                                    <p className="text-[9px] text-gray-600 mt-2">
-                                        * 拖动上方编辑器中的旗子，此处时间会自动更新。
-                                    </p>
                                 </div>
                             </div>
                         ) : (
