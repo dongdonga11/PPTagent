@@ -22,6 +22,21 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
     // Refs
     const playingSlideId = useRef<string | null>(null);
 
+    // --- BROWSER TTS STATE (Fallback) ---
+    const [voice, setVoice] = useState<SpeechSynthesisVoice | null>(null);
+    useEffect(() => {
+        const loadVoices = () => {
+            const voices = window.speechSynthesis.getVoices();
+            const zhVoice = voices.find(v => v.lang.includes('zh') && v.name.includes('Google')) || 
+                            voices.find(v => v.lang.includes('zh')) || 
+                            voices[0];
+            setVoice(zhVoice || null);
+        };
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+        return () => window.speechSynthesis.cancel();
+    }, []);
+
     // --- COMPUTED ---
     const totalDuration = useMemo(() => slides.reduce((acc, s) => acc + s.duration, 0), [slides]);
     
@@ -71,6 +86,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                     setCurrentTime(totalDuration);
                     setIsPlaying(false);
                     audioController.stop();
+                    window.speechSynthesis.cancel();
                     playingSlideId.current = null;
                 } else {
                     setCurrentTime(newTime);
@@ -78,6 +94,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
             }, 30);
         } else {
              audioController.stop();
+             window.speechSynthesis.cancel();
              playingSlideId.current = null;
         }
         return () => clearInterval(interval);
@@ -91,20 +108,29 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         // If we crossed into a new slide while playing
         if (playingSlideId.current !== SLIDE_ID) {
             
-            // Stop previous
+            // Stop previous sounds (both engines)
             audioController.stop();
+            window.speechSynthesis.cancel();
             
-            // Play new if exists
+            // Play new audio
             if (activeSlideInfo.slide.audioData) {
+                // Priority 1: High Quality AI Audio
                 audioController.play(activeSlideInfo.slide.audioData).catch(err => console.error("Audio Play Error", err));
             } else {
-                console.log("No AI audio generated for this slide yet.");
-                // Fallback to nothing (silent) or we could auto-generate, but that blocks UI
+                // Priority 2: Browser TTS Fallback
+                console.log("No AI audio, falling back to browser TTS.");
+                const cleanText = activeSlideInfo.slide.narration?.replace(/\[M\]|\[M:\d+\]|\[Next\]/g, ' ') || '';
+                if (cleanText) {
+                    const utterance = new SpeechSynthesisUtterance(cleanText);
+                    if (voice) utterance.voice = voice;
+                    utterance.rate = 1;
+                    window.speechSynthesis.speak(utterance);
+                }
             }
             
             playingSlideId.current = SLIDE_ID;
         }
-    }, [activeSlideInfo.index, isPlaying]); // Depend on index change
+    }, [activeSlideInfo.index, isPlaying, voice]); // Depend on index change
 
 
     // --- HANDLERS ---
@@ -114,6 +140,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         const time = Number(e.target.value);
         setCurrentTime(time);
         audioController.stop();
+        window.speechSynthesis.cancel();
         playingSlideId.current = null;
     };
 
@@ -131,7 +158,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
         onSlideUpdate(selectedSlide.id, { 
             narration: newText,
             markers: markers,
-            audioData: undefined // Invalidate old audio
+            audioData: undefined // Invalidate old audio to force browser TTS or re-generation
         });
     };
 
@@ -305,7 +332,7 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                                         {slide.audioData ? (
                                                             <i className="fa-solid fa-microphone-lines text-green-400 text-[10px]" title="AI语音已生成"></i>
                                                         ) : (
-                                                            <i className="fa-solid fa-microphone-slash text-gray-600 text-[10px]" title="无语音"></i>
+                                                            <i className="fa-solid fa-microphone text-gray-600 text-[10px]" title="使用浏览器语音"></i>
                                                         )}
                                                         <span className="text-[10px] text-gray-400 truncate font-mono">
                                                             {slide.title}
@@ -336,8 +363,14 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                 {/* Audio Generator */}
                                 <div className="bg-black/30 rounded p-3 border border-gray-800">
                                     <div className="flex justify-between items-center mb-2">
-                                        <label className="text-[10px] text-gray-500 uppercase font-bold">AI 语音 (Gemini TTS)</label>
-                                        {selectedSlide.audioData && <span className="text-[10px] text-green-500"><i className="fa-solid fa-check"></i> 已生成</span>}
+                                        <label className="text-[10px] text-gray-500 uppercase font-bold">音频源 (Audio Source)</label>
+                                        <div className="text-[10px]">
+                                            {selectedSlide.audioData ? (
+                                                <span className="text-green-400 flex items-center gap-1"><i className="fa-brands fa-google"></i> Gemini TTS</span>
+                                            ) : (
+                                                <span className="text-gray-500 flex items-center gap-1"><i className="fa-solid fa-globe"></i> Browser TTS (Fallback)</span>
+                                            )}
+                                        </div>
                                     </div>
                                     <button 
                                         onClick={handleGenerateAudio}
@@ -351,11 +384,11 @@ const VideoStage: React.FC<VideoStageProps> = ({ slides, globalStyle, onSlideUpd
                                         {isGeneratingAudio ? (
                                             <><i className="fa-solid fa-circle-notch fa-spin"></i> 生成中...</>
                                         ) : (
-                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成语音' : '生成 AI 语音'}</>
+                                            <><i className="fa-solid fa-wand-magic-sparkles"></i> {selectedSlide.audioData ? '重新生成 AI 语音' : '生成 AI 语音 (High Quality)'}</>
                                         )}
                                     </button>
                                     <p className="text-[10px] text-gray-500 mt-2">
-                                        生成后，分镜时长将自动对齐语音长度。
+                                        AI 语音生成后，分镜时长将自动对齐音频长度。未生成时使用浏览器默认语音预览。
                                     </p>
                                 </div>
 
