@@ -82,6 +82,7 @@ const App: React.FC = () => {
                 speaker_notes: item.speaker_notes || '',
                 narration: item.narration || '',
                 duration: item.duration || calculateDuration(item.narration || ''),
+                markers: item.markers || [],
                 content_html: '', // Empty initially, wait for visual generation
                 isGenerated: false,
                 isLoading: false

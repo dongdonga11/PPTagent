@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { Slide, GlobalStyle } from "../types";
+import { parseScriptAndAlign } from "../utils/timelineUtils";
 
 const getAiClient = () => {
   const apiKey = process.env.API_KEY;
@@ -15,22 +16,20 @@ export const generatePresentationOutline = async (userInput: string): Promise<an
   const ai = getAiClient();
   
   const systemPrompt = `
-    Role: 你是一位专业的视频课程导演和 PPT 设计师。
+    Role: 你是一位专业的视频课程导演。
     Task: 将输入的公众号文章拆解为分镜脚本 (Storyboard / A2S)。
     
     Constraints:
     1. **分段逻辑**: 根据文章的语义转折进行分段。一段话讲一个核心观点，对应一页 PPT (Scene)。
-    2. **口语化重写 (Critical)**: 'narration' 字段必须是将文章内容改为“演讲口语”，去掉书面语，加入互动感（如“大家请看...”、“这意味着...”）。
-    3. **视觉布局 (Layout)**: 为每一段话选择最合适的 PPT 布局 ('visual_layout')。
-       - 封面/开场 -> 'Cover'
-       - 章节过渡 -> 'SectionTitle'
-       - 列举要点 -> 'Bullets'
-       - 讲对比/案例 (左文右图) -> 'SplitLeft'
-       - 强调关键数据 -> 'BigNumber'
-       - 引用金句 -> 'Quote'
-       - 讲多个概念 -> 'GridFeatures'
-    4. **时长预估**: 'duration' = 字数 / 4.5。
-    5. **内容提炼**: 'title' 和 'visual_intent' 要极度精简，适合做 PPT 标题。
+    2. **视觉布局**: 选择最合适的 'visual_layout'。
+    3. **关键：时序锚点 (Markers)**: 
+       你必须在 'narration' 脚本中插入 **[M]** 标记，告诉前端何时触发动画。
+       - 在每句话的逻辑重音前、或新观点出现前插入 [M]。
+       - 举例："大家看[M]这张图，这代表了[M]三个关键趋势..."
+       - **每页至少包含 1-3 个 [M] 标记**。
+    
+    4. **口语化**: 去掉书面语，改为演讲口语。
+    5. **时长**: 字数 / 4.5。
     
     Output Format: JSON Array.
   `;
@@ -46,12 +45,11 @@ export const generatePresentationOutline = async (userInput: string): Promise<an
         items: {
           type: Type.OBJECT,
           properties: {
-            title: { type: Type.STRING, description: "Short slide title" },
+            title: { type: Type.STRING },
             visual_layout: { type: Type.STRING, enum: ['Cover', 'SectionTitle', 'Bullets', 'SplitLeft', 'SplitRight', 'BigNumber', 'Quote', 'GridFeatures'] },
-            visual_intent: { type: Type.STRING, description: "Instructions for the visual designer" },
-            narration: { type: Type.STRING, description: "Verbatim spoken script (Colloquial)" },
-            speaker_notes: { type: Type.STRING },
-            duration: { type: Type.NUMBER, description: "Estimated duration in seconds" }
+            visual_intent: { type: Type.STRING },
+            narration: { type: Type.STRING, description: "Script with [M] tags" },
+            duration: { type: Type.NUMBER }
           },
           required: ["title", "visual_layout", "visual_intent", "narration", "duration"],
         },
@@ -60,8 +58,17 @@ export const generatePresentationOutline = async (userInput: string): Promise<an
   });
 
   try {
-    const text = response.text || "[]";
-    return JSON.parse(text);
+    const rawData = JSON.parse(response.text || "[]");
+    
+    // Post-process: Ensure markers exist and calculate initial timings
+    return rawData.map((item: any) => {
+        const { markers } = parseScriptAndAlign(item.narration, item.duration);
+        return {
+            ...item,
+            markers // Attach calculated markers
+        };
+    });
+
   } catch (e) {
     console.error("Failed to parse outline JSON", e);
     return [];
@@ -145,7 +152,6 @@ export const generateSlideHtml = async (
 ): Promise<string> => {
   const ai = getAiClient();
 
-  // Inject the Layout Intent into the prompt
   const layoutInstruction = slide.visual_layout ? `Strictly follow this layout structure: ${slide.visual_layout}` : '';
 
   const prompt = `
@@ -180,7 +186,15 @@ export const generateSlideHtml = async (
     4. **颜色使用**：使用 style="color: ${globalStyle.accentColor}" 高亮。
     
     🌟 关键：动画编排 (Motion Choreography) 🌟
-    给关键元素添加 \`data-motion="fade-up" | "zoom-in" | "slide-right"\` 属性。
+    你需要为页面中的不同元素添加 data-motion 属性，这些属性将由外部时间轴驱动。
+    
+    **重要：请务必将内容拆分为至少 2-3 个动画步骤，与脚本中的 [M] 标记对应。**
+    例如：
+    - 标题 -> data-motion="fade-up"
+    - 第一个要点 -> data-motion="slide-right" (对应 [M]1)
+    - 第二个要点 -> data-motion="slide-right" (对应 [M]2)
+    
+    可用动画: "fade-up", "zoom-in", "slide-right", "fade-in".
     
     技术约束：
     1. 不要返回 Markdown 代码块。直接返回 HTML 字符串。

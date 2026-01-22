@@ -1,6 +1,12 @@
 
 export type SlideLayoutType = 'Cover' | 'SectionTitle' | 'Bullets' | 'SplitLeft' | 'SplitRight' | 'BigNumber' | 'Quote' | 'GridFeatures';
 
+export interface AnimationMarker {
+  id: number;       // 1, 2, 3... corresponding to [M:1], [M:2]
+  time: number;     // relative time in seconds from start of slide
+  label?: string;   // optional description
+}
+
 export interface Slide {
   id: string;
   title: string;
@@ -10,9 +16,12 @@ export interface Slide {
   content_html: string; // The rendered HTML
   
   // Audio Layer (The Script)
-  narration: string; // The exact voiceover script
+  narration: string; // The exact voiceover script with [M:x] tags
   duration: number; // Estimated duration in seconds
   speaker_notes: string;
+  
+  // Time-Driven Animation
+  markers: AnimationMarker[]; // Calculated timestamps for the tags
   
   // State
   isGenerated: boolean;
