@@ -9,6 +9,7 @@ import SlideList from './components/SlideList';
 import CodeEditor from './components/CodeEditor';
 import ScriptEditor from './components/ScriptEditor';
 import PresentationRunner from './components/PresentationRunner';
+import VideoStage from './components/VideoStage'; // Import VideoStage
 import { generatePresentationOutline, generateSlideHtml, generateTheme, generateFullPresentationHtml } from './services/geminiService';
 
 const DEFAULT_STYLE: GlobalStyle = {
@@ -143,15 +144,12 @@ const App: React.FC = () => {
 
     // Context specific handling
     if (state.stage === ProjectStage.STORY) {
-        // In Story mode, chat is just a writing assistant (MVP: simple echo/instruction)
         addMessage('assistant', "请在左侧编辑器完善文案。完成后点击顶部的“AI 拆解”按钮。");
     } 
     else if (state.stage === ProjectStage.SCRIPT) {
-        // In Script mode, users might ask to add slides or merge slides (Not impl in MVP yet)
         addMessage('assistant', "当前处于脚本模式。您可以在右侧列表选择分镜，并编辑具体的旁白和时长。确认无误后，请切换到【视觉】模式生成画面。");
     }
     else if (state.stage === ProjectStage.VISUAL) {
-        // In Visual mode, chat generates/modifies code
         if (activeSlideId) {
             setIsProcessing(true);
             setMode(AgentMode.CODER);
@@ -162,6 +160,8 @@ const App: React.FC = () => {
         } else {
             addMessage('assistant', "请先选择一张幻灯片。");
         }
+    } else if (state.stage === ProjectStage.EXPORT) {
+        addMessage('assistant', "视频合成中心: 这里可以预览自动化生成的视频流。点击“播放”按钮开始预览，系统会自动朗读旁白。");
     }
   };
 
@@ -209,8 +209,17 @@ const App: React.FC = () => {
                 </div>
             );
 
-        case ProjectStage.VISUAL:
         case ProjectStage.EXPORT:
+            // Render Studio (Video Editor)
+            return (
+                <VideoStage 
+                    slides={state.slides}
+                    globalStyle={state.globalStyle}
+                />
+            );
+
+        case ProjectStage.VISUAL:
+        default:
             // The Classic View: List -> Chat -> Preview
             return (
                  <div className="flex h-full">
@@ -269,14 +278,6 @@ const App: React.FC = () => {
                                 >
                                     <i className="fa-solid fa-code"></i>
                                 </button>
-                                {state.stage === ProjectStage.EXPORT && (
-                                    <button 
-                                        className="text-xs px-3 py-1.5 rounded bg-purple-600 text-white hover:bg-purple-500 ml-2"
-                                        onClick={() => alert("视频合成功能开发中... (Remotion Integration)")}
-                                    >
-                                        <i className="fa-solid fa-film mr-2"></i> 导出视频
-                                    </button>
-                                )}
                             </div>
                         </div>
 
@@ -286,8 +287,6 @@ const App: React.FC = () => {
                     </div>
                  </div>
             );
-        default:
-            return null;
     }
   };
 

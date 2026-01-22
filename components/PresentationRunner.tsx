@@ -8,17 +8,15 @@ interface PresentationRunnerProps {
     onClose: () => void;
 }
 
-// Sub-component to handle individual slide animations
-// This ensures each slide has its own animation scope/ref, preventing conflicts during transitions
-const SlideRenderer: React.FC<{ 
+// Exporting this for reuse in VideoStage
+export const SlideRenderer: React.FC<{ 
     html: string; 
     step: number; 
-    fontFamily: string 
-}> = ({ html, step, fontFamily }) => {
+    fontFamily: string;
+    className?: string;
+}> = ({ html, step, fontFamily, className }) => {
     const [scope, animate] = useAnimate();
 
-    // Initial style injection to prevent flash (hide all motion elements)
-    // We do this via a style tag scoped to this component instance effectively
     const cssHide = `
         .slide-runner-content [data-motion] {
             opacity: 0;
@@ -31,11 +29,9 @@ const SlideRenderer: React.FC<{
         const elements = scope.current.querySelectorAll('[data-motion]');
         
         elements.forEach((el: HTMLElement, index: number) => {
-            // Logic: elements with index < step are visible
             const shouldBeVisible = index < step;
             const motionType = el.dataset.motion;
             
-            // Define Hidden States
             let hiddenState: any = { opacity: 0 };
             if (motionType === 'fade-up') hiddenState = { opacity: 0, y: 30, scale: 1, x: 0 };
             else if (motionType === 'slide-right') hiddenState = { opacity: 0, x: -30, y: 0, scale: 1 };
@@ -47,7 +43,6 @@ const SlideRenderer: React.FC<{
             if (shouldBeVisible) {
                 animate(el, visibleState, { duration: 0.5, ease: "easeOut" });
             } else {
-                // When stepping back or initializing
                 animate(el, hiddenState, { duration: 0.3, ease: "easeOut" });
             }
         });
@@ -58,7 +53,7 @@ const SlideRenderer: React.FC<{
             <style>{cssHide}</style>
             <div 
                 ref={scope}
-                className="w-full h-full p-8 sm:p-16 flex flex-col slide-content-wrapper slide-runner-content"
+                className={`w-full h-full p-8 sm:p-16 flex flex-col slide-content-wrapper slide-runner-content ${className || ''}`}
                 dangerouslySetInnerHTML={{ __html: html }}
                 style={{ fontFamily }}
             />
@@ -73,33 +68,20 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
 
     const currentSlide = slides[currentIndex];
 
-    // Calculate total animation steps for the current slide based on HTML string
-    // This avoids needing to query the DOM and solves the "ref" dependency issue for logic
     const totalSteps = useMemo(() => {
         if (!currentSlide?.content_html) return 0;
         const matches = currentSlide.content_html.match(/data-motion/g);
         return matches ? matches.length : 0;
     }, [currentSlide]);
 
-    // Reset step when slide changes
     useEffect(() => {
-        // When entering a new slide, we can choose to auto-play the first element (Title)
-        // or start completely blank.
-        // Let's start with 1 step visible (Title usually) to avoid a blank screen, 
-        // unless totalSteps is 0.
-        // If the user wants full manual control, set to 0. 
-        // Based on user feedback "flash then disappear", 0 is safer but we need to ensure they know to click.
-        // Let's stick to 0 (all hidden) but ensure the transition is smooth.
         setAnimationStep(0);
     }, [currentIndex]);
 
     const handleNext = useCallback(() => {
-        // If there are more steps to reveal on this slide
         if (animationStep < totalSteps) {
             setAnimationStep(prev => prev + 1);
-        } 
-        // Else go to next slide
-        else if (currentIndex < slides.length - 1) {
+        } else if (currentIndex < slides.length - 1) {
             setDirection(1);
             setCurrentIndex(prev => prev + 1);
         }
@@ -108,8 +90,7 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
     const handlePrev = useCallback(() => {
         if (animationStep > 0) {
             setAnimationStep(prev => prev - 1);
-        }
-        else if (currentIndex > 0) {
+        } else if (currentIndex > 0) {
             setDirection(-1);
             setCurrentIndex(prev => prev - 1);
         }
@@ -130,7 +111,6 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleNext, handlePrev, onClose]);
 
-    // Slide Transition Variants
     const variants = {
         enter: (direction: number) => ({
             x: direction > 0 ? '100%' : '-100%',
@@ -175,10 +155,6 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
                         className="absolute w-full h-full flex flex-col items-center justify-center shadow-2xl rounded-xl overflow-hidden bg-black/10"
                         style={{ fontFamily: globalStyle.fontFamily }}
                     >
-                        {/* 
-                            We pass the current animation step to the child renderer.
-                            The child renderer manages its own scope, solving the ref conflict.
-                        */}
                         <SlideRenderer 
                             html={currentSlide?.content_html || '<div></div>'} 
                             step={animationStep}
@@ -188,7 +164,6 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
                 </AnimatePresence>
             </div>
 
-            {/* Navigation Click Zones */}
             <div className="absolute left-0 top-0 w-[10%] h-full cursor-pointer z-40 hover:bg-white/5 transition-colors" onClick={handlePrev} />
             <div className="absolute right-0 top-0 w-[10%] h-full cursor-pointer z-40 hover:bg-white/5 transition-colors" onClick={handleNext} />
         </div>
