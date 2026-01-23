@@ -36,8 +36,31 @@ export interface GlobalStyle {
   fontFamily: string;
 }
 
+// --- CMS SPECIFIC TYPES ---
+
+export interface UserStyleProfile {
+    id: string;
+    name: string;
+    tone: string; // e.g. "Professional", "Witty", "Emotional"
+    forbiddenWords: string[];
+    preferredEnding: string;
+    colorScheme: {
+        primary: string;
+        secondary: string;
+    };
+}
+
+export interface ResearchTopic {
+    id: string;
+    title: string;
+    coreViewpoint: string;
+    hotScore: number; // 1-100
+    source?: string;
+}
+
 export enum ProjectStage {
-  STORY = 'STORY',       // Step 1: Write the article
+  RESEARCH = 'RESEARCH', // Step 0: Input & Ideation (Research Panel)
+  STORY = 'STORY',       // Step 1: Write the article (Drafting Bench)
   SCRIPT = 'SCRIPT',     // Step 2: A2S - Breakdown into Scenes (Script Engine)
   VISUAL = 'VISUAL',     // Step 3: AI Coder - Generate HTML
   EXPORT = 'EXPORT'      // Step 4: Finalize
@@ -50,6 +73,9 @@ export interface PresentationState {
   sourceMaterial: string;
   slides: Slide[];
   globalStyle: GlobalStyle;
+  // New CMS State
+  userProfile?: UserStyleProfile;
+  selectedTopic?: ResearchTopic;
 }
 
 export interface ChatMessage {
