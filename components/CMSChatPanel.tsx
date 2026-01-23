@@ -47,21 +47,38 @@ const CMSChatPanel: React.FC<CMSChatPanelProps> = ({ messages, onSendMessage, on
                             {msg.content}
                         </div>
 
-                        {/* UI Options (Buttons) */}
+                        {/* UI Options (Buttons / Swatches) */}
                         {msg.uiOptions && !msg.isActionExecuted && (
-                            <div className="mt-3 grid grid-cols-1 gap-2 w-full max-w-[90%] animate-in slide-in-from-top-2 duration-300">
-                                {msg.uiOptions.map((opt, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => onOptionSelect(opt.value, opt.label)}
-                                        className="text-left px-3 py-2 bg-[#2a2a2a] hover:bg-[#333] border border-gray-700 hover:border-blue-500 rounded-lg text-xs text-blue-300 transition-all flex items-center gap-2 group"
-                                    >
-                                        <span className="w-5 h-5 rounded-full bg-blue-900/30 text-blue-400 flex items-center justify-center text-[10px] group-hover:bg-blue-600 group-hover:text-white">
-                                            {String.fromCharCode(65 + idx)}
-                                        </span>
-                                        {opt.label}
-                                    </button>
-                                ))}
+                            <div className="mt-3 w-full max-w-[90%] animate-in slide-in-from-top-2 duration-300">
+                                {/* Check if it's a color palette selection */}
+                                {msg.uiOptions[0].style ? (
+                                    <div className="flex gap-2">
+                                        {msg.uiOptions.map((opt, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => onOptionSelect(opt.value, opt.label)}
+                                                className="w-8 h-8 rounded-full border-2 border-transparent hover:border-white transition-all shadow-lg hover:scale-110"
+                                                style={{ backgroundColor: opt.style }}
+                                                title={opt.label}
+                                            />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {msg.uiOptions.map((opt, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => onOptionSelect(opt.value, opt.label)}
+                                                className="text-left px-3 py-2 bg-[#2a2a2a] hover:bg-[#333] border border-gray-700 hover:border-blue-500 rounded-lg text-xs text-blue-300 transition-all flex items-center gap-2 group"
+                                            >
+                                                <span className="w-5 h-5 rounded-full bg-blue-900/30 text-blue-400 flex items-center justify-center text-[10px] group-hover:bg-blue-600 group-hover:text-white">
+                                                    {String.fromCharCode(65 + idx)}
+                                                </span>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                          {/* Selection Feedback State */}

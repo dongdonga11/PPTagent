@@ -24,14 +24,14 @@ export const cmsAgentChat = async (
 ): Promise<CMSAgentResponse> => {
     const ai = getAiClient();
 
+    // Determine the implicit "State" of the conversation
+    const hasContent = (context.articleContent?.length || 0) > 50;
+    const hasSelection = (context.currentSelection?.length || 0) > 0;
+    const isStart = history.length <= 2 && !hasContent;
+
     const systemPrompt = `
-      Role: You are a Senior Chief Editor Agent for a WeChat Official Account CMS.
-      Your Goal: Assist the user in writing a high-quality article. 
-      
-      CRITICAL INSTRUCTION: **BE AUTONOMOUS & EFFICIENT**.
-      - Do NOT ask for "Continue" confirmation after every step.
-      - If the user selects an option, **IMMEDIATELY** execute the writing action for that option.
-      - Write substantial content (whole sections) in one go using 'write_to_editor'.
+      Role: You are a Senior Chief Editor Agent (Intelligent Copilot) for a WeChat Official Account.
+      Your Goal: Proactively guide the user from Ideation -> Outline -> Drafting -> Polishing.
       
       User Profile:
       - Tone: ${context.profile.tone}
@@ -39,42 +39,53 @@ export const cmsAgentChat = async (
       
       Current Context:
       - Topic: ${context.topic?.title || 'General'}
-      - Article Content Length: ${context.articleContent?.length || 0} chars
-      - User Selection: "${context.currentSelection || 'None'}"
+      - Content Length: ${context.articleContent?.length || 0} chars
+      - User Selection: "${context.currentSelection || ''}" (If not empty, user is focusing on this text)
       
-      Action Logic (Tools):
-      1. "write_to_editor": 
-         - Use this to write new content. 
-         - Format: HTML (use <h2> for subheaders, <p>, <ul>, <blockquote>).
-         - WHEN TO USE: 
-           - User says "Continue" -> Write the next logical section (e.g., if Intro exists, write Main Body 1).
-           - User selects an Angle (e.g., "Story Mode") -> Write the Introduction immediately.
+      --- WORKFLOW LOGIC (STATE MACHINE) ---
       
-      2. "rewrite_selection": 
-         - Use ONLY if the user has highlighted text and asked for a change.
+      STATE 1: IDEATION (Start)
+      - Condition: New topic, no content.
+      - Behavior: You have already proposed angles. If user selects an angle (e.g., "Story Mode"), DO NOT WRITE BODY YET.
+      - Action: Ask: "Great choice. Shall I generate a structured OUTLINE first, or start writing the Introduction directly?"
+      - Tool: "ask_user_choice" with options: "Generate Outline", "Write Intro".
       
-      3. "ask_user_choice": 
-         - Use ONLY when a major directional decision is needed that you cannot infer.
-         - Do NOT use for small steps. 
-         - Example: Starting a brand new article, or choosing between "Conclusion" vs "Call to Action".
+      STATE 2: OUTLINING
+      - Condition: User chose "Generate Outline".
+      - Action: Use "write_to_editor" to insert a skeleton (H1, H2, empty p tags).
+      - Reply: "Outline generated. You can tweak headings. Say 'Continue' when ready."
       
-      4. "apply_theme": If user mentions colors/styles.
+      STATE 3: WRITING (Autonomous)
+      - Condition: User chose "Write Intro" OR says "Continue" after outline.
+      - Action: Use "write_to_editor" to write the NEXT logical section.
+      - Rule: Write substantial chunks. DO NOT ask for confirmation after every paragraph. Just write it.
       
-      Examples:
-      - Input: "我选择：🔥 痛点切入" -> Action: "write_to_editor" (Content: "<h2>为什么你总是感到焦虑？</h2><p>数据表明...</p>")
-      - Input: "继续" -> Action: "write_to_editor" (Content: Next section of the article)
-      - Input: "帮我写个结尾" -> Action: "write_to_editor" (Content: Conclusion)
+      STATE 4: REFINING (Selection Detected)
+      - Condition: User has selected text: "${context.currentSelection}".
+      - Behavior: The user wants to modify THIS specific text.
+      - If User Input is generic (e.g., "Make it better"), infer intent -> "rewrite_selection".
+      - If User Input is specific command (e.g., "Turn into quote"), -> "rewrite_selection" with <blockquote>.
+      - If User Input is empty/null (Passive), Propose actions via "ask_user_choice": ["Shorten", "Make Gold Sentence", "More Emotional"].
+
+      STATE 5: STYLING
+      - Condition: User asks for visual changes (e.g., "Make it colorful", "Change theme").
+      - Action: Use "ask_user_choice" with color options OR "apply_theme" directly.
       
-      Output Format: JSON ONLY.
+      --- AVAILABLE TOOLS ---
+      1. "write_to_editor": Append/Insert new content.
+      2. "rewrite_selection": Replace content.html.
+      3. "apply_theme": Args: { themeId: 'default' | 'kaoxing' | 'tech' }
+      4. "ask_user_choice": Args: { options: [{label: "...", value: "...", style: "optional_css_color"}] }
+      
+      --- OUTPUT FORMAT (JSON ONLY) ---
       {
-        "thought": "Reasoning...",
-        "reply": "Brief confirmation (e.g., 'Writing the introduction...')",
+        "thought": "State analysis...",
+        "reply": "Friendly response...",
         "action": { "type": "...", "args": {} }
       }
     `;
 
     // Construct history for Gemini
-    // We only take the last few turns to save tokens, but enough for context
     const chatHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
     const fullPrompt = `${chatHistory}\nUSER: ${userInput}`;
 
@@ -99,7 +110,6 @@ export const cmsAgentChat = async (
                                 },
                                 args: { 
                                     type: Type.OBJECT,
-                                    // Properties must be defined for OBJECT type to avoid 400 error
                                     properties: {
                                         content: { type: Type.STRING },
                                         themeId: { type: Type.STRING },
@@ -109,7 +119,8 @@ export const cmsAgentChat = async (
                                                 type: Type.OBJECT,
                                                 properties: {
                                                     label: { type: Type.STRING },
-                                                    value: { type: Type.STRING }
+                                                    value: { type: Type.STRING },
+                                                    style: { type: Type.STRING } // For color swatches
                                                 }
                                             }
                                         }
@@ -138,7 +149,7 @@ export const cmsAgentChat = async (
 };
 
 // --- EXISTING CMS FUNCTIONS (Research, Image, etc) ---
-
+// (Kept unchanged)
 export const performResearchAndIdeation = async (keyword: string, fileContent: string = ''): Promise<ResearchTopic[]> => {
     const ai = getAiClient();
     const systemPrompt = `WeChat Content Strategist. Generate 10-20 topics based on keyword. Return JSON array.`;
@@ -189,7 +200,6 @@ export const generateAiImage = async (prompt: string): Promise<string | undefine
 };
 
 export const generateArticleSection = async (currentContent: string, instruction: string, profile: UserStyleProfile): Promise<string> => {
-    // Legacy function, replaced by Agent but kept for simple calls
     const ai = getAiClient();
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -199,7 +209,6 @@ export const generateArticleSection = async (currentContent: string, instruction
     return response.text?.trim() || "";
 }
 
-// --- PRESENTATION FUNCTIONS (Preserved) ---
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string | undefined> => {
   const ai = getAiClient();
   const cleanText = text.replace(/\[M\]|\[M:\d+\]|\[Next\]/g, ' ').trim();

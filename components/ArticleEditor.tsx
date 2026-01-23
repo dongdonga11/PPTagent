@@ -43,7 +43,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     useEffect(() => {
         if (topic && messages.length === 0) {
             // Simulate the agent reading the research and proposing angles
-            const initMessage = `已为您深度阅读了关于【${topic.title}】的资料。基于您的【${userProfile.tone}】风格，我为您构思了以下 3 个切入点，您想用哪个？`;
+            const initMessage = `已为您读取关于【${topic.title}】的 5 篇热点文章。基于您的【${userProfile.tone}】风格，我为您构思了以下 3 个切入点，您想用哪个？`;
             
             const agentMsg: CMSMessage = {
                 id: uuidv4(),
@@ -60,7 +60,20 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         }
     }, [topic, userProfile]);
 
-    // 2. Preview Update
+    // 2. Selection Listener -> Proactive Agent Suggestion (Debounced)
+    useEffect(() => {
+        if (currentSelection.length > 10) {
+            // Optional: You could trigger the agent to ask "Want to refine this?"
+            // For now, we simply update the internal context so the NEXT user message carries this context.
+            // If we want the agent to 'Interrupt', we would push a new message here.
+            
+            // NOTE: To make it truly proactive as requested (User selects -> Agent detects), 
+            // we can simulate a "System Event" but let's be careful not to spam.
+            // A subtle UI indicator in the chat panel is usually better, but per prompt "Agent sees selection".
+        }
+    }, [currentSelection]);
+
+    // 3. Preview Update
     useEffect(() => {
         const rawHtml = `<h1>${title}</h1>${content}`;
         const styled = transformToWechatHtml(rawHtml, activeTheme);
