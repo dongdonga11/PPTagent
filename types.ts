@@ -10,14 +10,21 @@ export interface AnimationMarker {
 export interface Slide {
   id: string;
   title: string;
-  visual_intent: string; 
-  visual_layout: SlideLayoutType; 
-  content_html: string; 
-  narration: string; 
-  duration: number; 
+  // Visual Layer
+  visual_intent: string; // Description for the AI Coder
+  visual_layout: SlideLayoutType; // Structured layout type for consistency
+  content_html: string; // The rendered HTML
+  
+  // Audio Layer (The Script)
+  narration: string; // The exact voiceover script with [M:x] tags
+  duration: number; // Estimated duration in seconds
   speaker_notes: string;
-  audioData?: string; 
-  markers: AnimationMarker[]; 
+  audioData?: string; // Base64 encoded PCM audio data from Gemini TTS
+  
+  // Time-Driven Animation
+  markers: AnimationMarker[]; // Calculated timestamps for the tags
+  
+  // State
   isGenerated: boolean;
   isLoading: boolean;
 }
@@ -29,23 +36,12 @@ export interface GlobalStyle {
   fontFamily: string;
 }
 
-// --- CMS & DATA TYPES ---
-
-export interface Article {
-    id: string;
-    title: string;
-    content: string; // The full HTML content
-    plainText: string; // For searching/AI processing
-    createdAt: number;
-    updatedAt: number;
-    tags: string[];
-    author: string;
-}
+// --- CMS SPECIFIC TYPES ---
 
 export interface UserStyleProfile {
     id: string;
     name: string;
-    tone: string; 
+    tone: string; // e.g. "Professional", "Witty", "Emotional"
     forbiddenWords: string[];
     preferredEnding: string;
     colorScheme: {
@@ -58,49 +54,30 @@ export interface ResearchTopic {
     id: string;
     title: string;
     coreViewpoint: string;
-    hotScore: number; 
+    hotScore: number; // 1-100
     source?: string;
 }
 
-// THE NEW MODULAR NAVIGATION ENUM
-export enum AppMode {
-  HOME = 'HOME',           // 1. Media Hub
-  RESEARCH = 'RESEARCH',   // 2. Hotspots (New Independent Module)
-  ARTICLE = 'ARTICLE',     // 3. Article Writer (Renamed from WRITER)
-  PRESENTATION = 'PRESENTATION', // 4. PPT
-  VIDEO = 'VIDEO',         // 5. Video
-  POSTER = 'POSTER'        // 6. Poster
-}
-
 export enum ProjectStage {
-    STORY = 'STORY',
-    SCRIPT = 'SCRIPT',
-    VISUAL = 'VISUAL',
-    POSTER = 'POSTER',
-    RESEARCH = 'RESEARCH'
+  DASHBOARD = 'DASHBOARD', // New Central Hub
+  RESEARCH = 'RESEARCH', // Step 0: Input & Ideation (Research Panel)
+  STORY = 'STORY',       // Step 1: Write the article (Drafting Bench)
+  POSTER = 'POSTER',     // Step 1.5: Social Media / RedBook (NEW)
+  SCRIPT = 'SCRIPT',     // Step 2: A2S - Breakdown into Scenes (Script Engine)
+  VISUAL = 'VISUAL',     // Step 3: AI Coder - Generate HTML
+  EXPORT = 'EXPORT'      // Step 4: Finalize
 }
 
 export interface PresentationState {
-  // App Logic State
-  mode: AppMode;
-  activeModuleId: string; // To track different sessions
-  
-  // Data State
-  savedArticles: Article[]; // The "Database"
-  
-  // Current Working Session State
-  currentArticleId?: string; // If working on an existing article
-  projectTitle: string;
-  sourceMaterial: string; // The active text input for AI
+  projectId: string;
+  title: string;
+  stage: ProjectStage;
+  sourceMaterial: string;
   slides: Slide[];
   globalStyle: GlobalStyle;
-  
-  // Sub-states
+  // New CMS State
   userProfile?: UserStyleProfile;
   selectedTopic?: ResearchTopic;
-  
-  // UI States
-  showResearchPanel: boolean; // Toggle inside Writer
 }
 
 export interface ChatMessage {
@@ -114,8 +91,8 @@ export interface ChatMessage {
 export type CMSActionType = 'write_to_editor' | 'rewrite_selection' | 'apply_theme' | 'ask_user_choice' | 'none';
 
 export interface CMSAgentResponse {
-    thought: string;   
-    reply: string;     
+    thought: string;   // Chain of thought
+    reply: string;     // Text to show user
     action: {
         type: CMSActionType;
         args: any;
@@ -123,7 +100,7 @@ export interface CMSAgentResponse {
 }
 
 export interface CMSMessage extends ChatMessage {
-    uiOptions?: { label: string; value: string; style?: string }[]; 
+    uiOptions?: { label: string; value: string; style?: string }[]; // Buttons for user choice
     isActionExecuted?: boolean;
 }
 

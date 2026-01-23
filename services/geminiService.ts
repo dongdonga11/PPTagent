@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { Slide, GlobalStyle, ResearchTopic, UserStyleProfile, CMSAgentResponse, CMSMessage, ChatMessage } from "../types";
+import { Slide, GlobalStyle, ResearchTopic, UserStyleProfile, CMSAgentResponse, CMSMessage } from "../types";
 import { parseScriptAndAlign } from "../utils/timelineUtils";
 
 const getAiClient = () => {
@@ -11,134 +11,205 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-// --- PPT CONVERSATIONAL AGENT ---
-
-export interface PPTAgentResponse {
-    reply: string;
-    action?: {
-        type: 'update_style' | 'generate_outline' | 'create_slides' | 'none';
-        data?: any;
-    };
-}
-
-export const pptAgentChat = async (
-    history: ChatMessage[],
-    userInput: string,
-    articleContent: string,
-    articleTitle: string
-): Promise<PPTAgentResponse> => {
+// --- POSTER AGENT: EXTRACT QUOTES ---
+export const extractGoldenQuotes = async (articleText: string): Promise<string[]> => {
     const ai = getAiClient();
-    
-    // Convert ChatMessage to history string
-    const conversationHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-    
     const systemPrompt = `
-      Role: You are "SpaceCoding PPT Architect" (演示架构师).
-      Mission: Guide the user to create a stunning presentation based on the provided article.
-      
-      --- CONTEXT ---
-      Article Title: "${articleTitle}"
-      Article Content (Snippet): "${articleContent.substring(0, 1000)}..."
-      
-      --- WORKFLOW STATE MACHINE ---
-      1. **STYLE_PHASE**: If user hasn't defined a style/color yet, ask for it.
-         - Output Action: 'update_style' (if user provides specific colors/theme).
-      2. **OUTLINE_PHASE**: Once style is known, generate a Text-Based Outline for approval.
-         - Reply: "Based on the [Style], here is the outline:\n1. Title...\n2. Section..."
-         - Ask: "Does this structure look good? Shall I build it?"
-      3. **BUILD_PHASE**: If user says "Yes/Go/Build", generate the JSON slides.
-         - Output Action: 'create_slides'.
-      
-      --- RULES ---
-      - Tone: Professional, Geeky, Efficient. (SpaceCoding style).
-      - If user asks for "Tech Style", imply Dark Mode + Blue/Purple.
-      - If user asks for "Minimal", imply White/Gray + Clean fonts.
-      - When generating 'create_slides', the 'data' must be a JSON Array of Slide objects (title, visual_layout, visual_intent, narration).
-      
-      --- JSON OUTPUT FORMAT ---
-      Return ONLY a JSON object. No markdown.
-      {
-        "thought": "Reasoning...",
-        "reply": "Message to user...",
-        "action": {
-            "type": "update_style" | "generate_outline" | "create_slides" | "none",
-            "data": ... (Object for style, Array for slides, or null)
-        }
-      }
+      Role: Social Media Copywriter (Xiaohongshu/Instagram Expert).
+      Task: Extract 6-8 "Golden Sentences" from the provided text.
+      Style: Short, punchy, insightful, high shareability. Avoid long paragraphs.
+      Output: JSON Array of strings.
     `;
+    
+    // Fallback if text is empty
+    if (!articleText || articleText.length < 50) {
+        return ["暂无足够内容，请先在文案环节创作。", "这是第二条示例金句。", "点击 AI 提取按钮开始工作。"];
+    }
 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `${conversationHistory}\nUSER: ${userInput}`,
+            contents: `Article Content:\n${articleText.substring(0, 8000)}`,
             config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: "application/json",
-                // Thinking config helps with complex logic flow
-                // thinkingConfig: { thinkingBudget: 1024 }, // Optional, use if available
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                }
+            }
+        });
+        
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        console.error("Failed to extract quotes", e);
+        return ["提取失败，请重试。", "AI 服务暂时不可用。"];
+    }
+};
+
+// --- CMS: INTELLIGENT AGENT (Chat & Tools) ---
+export const cmsAgentChat = async (
+    history: CMSMessage[],
+    userInput: string,
+    context: {
+        topic: ResearchTopic | null;
+        profile: UserStyleProfile;
+        currentSelection?: string;
+        articleContent?: string;
+    }
+): Promise<CMSAgentResponse> => {
+    const ai = getAiClient();
+
+    // Context Analysis
+    const contentLen = context.articleContent?.length || 0;
+    const hasSelection = (context.currentSelection?.length || 0) > 0;
+    
+    // Construct System Prompt based on "Smart CMS" PRD
+    const systemPrompt = `
+      Role: You are "Smart CMS", an Intelligent Co-pilot for WeChat Content Creation.
+      User Persona: "${context.profile.name}" (Tone: ${context.profile.tone}).
+      
+      --- CURRENT STATE CONTEXT ---
+      Topic: ${context.topic?.title || 'General Topic'}
+      Article Length: ${contentLen} chars.
+      Selected Text: "${context.currentSelection || 'None'}"
+      
+      --- AGENT BEHAVIOR RULES (STATE MACHINE) ---
+      
+      1. PHASE: IDEATION (Start)
+         - If user picks an Angle, immediately propose an Outline OR Start Writing.
+         - Use 'ask_user_choice'.
+      
+      2. PHASE: WRITING (Autonomous)
+         - If user says "Start", write the NEXT logical section using 'write_to_editor'.
+         - Write substantial blocks.
+      
+      3. PHASE: REFINING (Selection Active)
+         - If user selects text and asks for changes, use 'rewrite_selection'.
+      
+      4. PHASE: ASSETS & STYLING
+         - **IMAGE GENERATION**: 
+           - If user inputs specific command "/image [description]" OR asks "Generate an image of X":
+           - ACTION: Use 'insert_image' tool.
+           - ARGUMENT: Set 'prompt' to the English description of the image.
+         - **THEME**: 
+           - If user mentions colors/theme, use 'apply_theme' or 'ask_user_choice'.
+      
+      --- TOOLS (JSON OUTPUT) ---
+      
+      1. "write_to_editor": Append content. Args: { content: "<html>..." }
+      2. "rewrite_selection": Replace selection. Args: { content: "<html>..." }
+      3. "insert_image": Generate and insert AI image. Args: { prompt: "english description...", url: null }
+      4. "apply_theme": Args: { themeId: "..." }
+      5. "ask_user_choice": Args: { options: [{ label, value, style }] }
+      6. "none": Text reply.
+      
+      --- OUTPUT FORMAT ---
+      Return JSON ONLY.
+      {
+        "thought": "User wants an image of a cat...",
+        "reply": "Generating an image of a cute cat for you...",
+        "action": { "type": "insert_image", "args": { "prompt": "a cute cat sitting on a keyboard, cyberpunk style" } }
+      }
+    `;
+
+    // History Processing
+    const chatHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    const fullPrompt = `${chatHistory}\nUSER: ${userInput}`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: fullPrompt,
+            config: {
+                systemInstruction: systemPrompt,
+                responseMimeType: "application/json",
+                // Strict Schema Definition
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        thought: { type: Type.STRING },
+                        reply: { type: Type.STRING },
+                        action: {
+                            type: Type.OBJECT,
+                            properties: {
+                                type: { 
+                                    type: Type.STRING, 
+                                    enum: ['write_to_editor', 'rewrite_selection', 'insert_image', 'apply_theme', 'ask_user_choice', 'none'] 
+                                },
+                                args: { 
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        content: { type: Type.STRING },
+                                        prompt: { type: Type.STRING }, // For image generation
+                                        url: { type: Type.STRING },
+                                        themeId: { type: Type.STRING },
+                                        options: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    label: { type: Type.STRING },
+                                                    value: { type: Type.STRING },
+                                                    style: { type: Type.STRING }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } 
+                            },
+                            required: ['type']
+                        }
+                    },
+                    required: ['thought', 'reply', 'action']
+                }
             }
         });
 
         const text = response.text || "{}";
-        return JSON.parse(text) as PPTAgentResponse;
+        return JSON.parse(text) as CMSAgentResponse;
+
     } catch (e) {
-        console.error("PPT Agent Error", e);
+        console.error("Agent Error", e);
         return {
-            reply: "系统连接中断，请重试。",
-            action: { type: 'none' }
+            thought: "Error in generation",
+            reply: "Agent temporarily unavailable. Please try again.",
+            action: { type: 'none', args: {} }
         };
     }
 };
 
-// --- EXISTING CMS & HELPER FUNCTIONS ---
-
-// ... (Keep existing cmsAgentChat, extractGoldenQuotes, etc. exactly as they were to prevent breaking other modules)
-// I will rewrite them briefly here to ensure file integrity, assuming they are needed.
-
-// --- POSTER AGENT: EXTRACT QUOTES ---
-export const extractGoldenQuotes = async (articleText: string): Promise<string[]> => {
-    const ai = getAiClient();
-    const systemPrompt = `Role: Copywriter. Task: Extract 6-8 quotes. Output: JSON Array string[].`;
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Content: ${articleText.substring(0, 5000)}`,
-            config: { systemInstruction: systemPrompt, responseMimeType: "application/json" }
-        });
-        return JSON.parse(response.text || "[]");
-    } catch (e) { return ["Extraction failed."]; }
-};
-
-// --- CMS AGENT ---
-export const cmsAgentChat = async (history: CMSMessage[], userInput: string, context: any): Promise<CMSAgentResponse> => {
-    const ai = getAiClient();
-    const systemPrompt = `Role: SpaceCoding Editor. Tone: ${context.profile.tone}. Task: Help write article. Output JSON: {thought, reply, action: {type, args}}`;
-    const chatHistory = history.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `${chatHistory}\nUSER: ${userInput}`,
-            config: { systemInstruction: systemPrompt, responseMimeType: "application/json" }
-        });
-        return JSON.parse(response.text || "{}") as CMSAgentResponse;
-    } catch (e) { return { thought: 'err', reply: 'Error', action: { type: 'none', args: {} } }; }
-};
+// --- EXISTING CMS FUNCTIONS ---
 
 export const performResearchAndIdeation = async (keyword: string, fileContent: string = ''): Promise<ResearchTopic[]> => {
     const ai = getAiClient();
+    const systemPrompt = `WeChat Content Strategist. Generate 10-20 topics based on keyword. Return JSON array.`;
+    const userPrompt = `Keyword: ${keyword}\nContext: ${fileContent.substring(0, 3000)}`;
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `Keyword: ${keyword}\nContext: ${fileContent}`,
+            contents: userPrompt,
             config: {
-                systemInstruction: "Generate 10 topics. JSON Array.",
+                systemInstruction: systemPrompt,
                 tools: [{ googleSearch: {} }],
-                responseMimeType: "application/json"
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: { type: Type.STRING },
+                            coreViewpoint: { type: Type.STRING },
+                            hotScore: { type: Type.INTEGER }
+                        },
+                        required: ["title", "coreViewpoint", "hotScore"]
+                    }
+                }
             }
         });
         const raw = JSON.parse(response.text || "[]");
         return raw.map((item: any, idx: number) => ({ id: `topic-${idx}-${Date.now()}`, ...item }));
-    } catch (e) { return []; }
+    } catch (e) { return [{ id: 'err', title: 'Research Failed', coreViewpoint: 'Retry', hotScore: 0 }]; }
 }
 
 export const generateAiImage = async (prompt: string): Promise<string | undefined> => {
@@ -148,11 +219,26 @@ export const generateAiImage = async (prompt: string): Promise<string | undefine
             model: 'gemini-2.5-flash-image',
             contents: { parts: [{ text: prompt }] },
         });
-        return response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data 
-            ? `data:image/png;base64,${response.candidates[0].content.parts.find(p => p.inlineData)?.inlineData?.data}`
-            : undefined;
+        if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                }
+            }
+        }
+        return undefined;
     } catch (e) { return undefined; }
 };
+
+export const generateArticleSection = async (currentContent: string, instruction: string, profile: UserStyleProfile): Promise<string> => {
+    const ai = getAiClient();
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Context: ${currentContent.substring(currentContent.length - 500)}\nInstruction: ${instruction}`,
+        config: { systemInstruction: `Writer Persona: ${profile.tone}. Return HTML.` }
+    });
+    return response.text?.trim() || "";
+}
 
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string | undefined> => {
   const ai = getAiClient();
@@ -168,22 +254,55 @@ export const generateSpeech = async (text: string, voiceName: string = 'Kore'): 
       },
     });
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  } catch (error) { return undefined; }
+  } catch (error) {
+    console.error("Gemini TTS Error:", error);
+    throw error;
+  }
 };
 
-// Used for ScriptEngine direct generation
 export const generatePresentationOutline = async (userInput: string): Promise<any[]> => {
   const ai = getAiClient();
-  const systemPrompt = `Role: Director. Task: Article to Script (JSON Array).`;
+  const systemPrompt = `
+    Role: 你是一位专业的视频课程导演。
+    Task: 将输入的公众号文章拆解为分镜脚本 (Storyboard / A2S)。
+    Constraints: 1. 分段逻辑... 2. 视觉布局... 3. Markers [M]... 4. 口语化... 5. 时长...
+    Output Format: JSON Array.
+  `;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: userInput,
-    config: { systemInstruction: systemPrompt, responseMimeType: "application/json" },
+    config: {
+      systemInstruction: systemPrompt,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            visual_layout: { type: Type.STRING, enum: ['Cover', 'SectionTitle', 'Bullets', 'SplitLeft', 'SplitRight', 'BigNumber', 'Quote', 'GridFeatures'] },
+            visual_intent: { type: Type.STRING },
+            narration: { type: Type.STRING, description: "Script with [M] tags" },
+            duration: { type: Type.NUMBER }
+          },
+          required: ["title", "visual_layout", "visual_intent", "narration", "duration"],
+        },
+      },
+    },
   });
-  try { return JSON.parse(response.text || "[]"); } catch (e) { return []; }
+  try {
+    const rawData = JSON.parse(response.text || "[]");
+    return rawData.map((item: any) => {
+        const { markers } = parseScriptAndAlign(item.narration, item.duration);
+        return { ...item, markers };
+    });
+  } catch (e) {
+    console.error("Failed to parse outline JSON", e);
+    return [];
+  }
 };
 
-export const refineTextWithAI = async (text: string, instruction: string): Promise<string> => { 
+export const refineTextWithAI = async (text: string, instruction: string, context?: string): Promise<string> => { 
     const ai = getAiClient();
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -198,8 +317,17 @@ export const generateTheme = async (userInput: string): Promise<GlobalStyle> => 
     model: 'gemini-3-flash-preview',
     contents: userInput,
     config: {
-      systemInstruction: "Visual Director. JSON output {mainColor, accentColor, themeName, fontFamily}.",
-      responseMimeType: "application/json"
+      systemInstruction: "Visual Director. JSON output.",
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+            mainColor: { type: Type.STRING },
+            accentColor: { type: Type.STRING },
+            themeName: { type: Type.STRING },
+            fontFamily: { type: Type.STRING }
+        }
+      }
     },
   });
    try { return JSON.parse(response.text || "{}"); } 
@@ -209,16 +337,7 @@ export const generateTheme = async (userInput: string): Promise<GlobalStyle> => 
 export const generateSlideHtml = async (slide: Slide, globalStyle: GlobalStyle, context?: string): Promise<string> => {
   const ai = getAiClient();
   const prompt = `Generate HTML for slide: ${slide.title}. Layout: ${slide.visual_layout}. Intent: ${slide.visual_intent}. Narration: ${slide.narration}. Style: ${globalStyle.mainColor}, ${globalStyle.accentColor}. ${context || ''}`;
-  const systemPrompt = `Role: Expert Frontend Developer (SpaceCoding Edition).
-  Task: Create a visually stunning, Space/Tech-themed HTML component for a slide.
-  Constraints:
-  1. Use Tailwind CSS for ALL styling.
-  2. The outer container is 100% width/height.
-  3. Use Glassmorphism (bg-opacity, backdrop-blur), Gradients (bg-gradient-to-r), and modern typography.
-  4. IMPORTANT: For animations, ONLY use 'data-motion' attributes on elements (e.g., data-motion="fade-up", "slide-right", "zoom-in"). DO NOT write <script> tags or CSS keyframes.
-  5. Layout MUST match: ${slide.visual_layout}.
-  6. Return ONLY the HTML body content (divs), no <html> or <body> tags.
-  `;
+  const systemPrompt = `Frontend Coder. Tailwind CSS. 16:9 Aspect Ratio. Animation data-motion.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
@@ -227,3 +346,7 @@ export const generateSlideHtml = async (slide: Slide, globalStyle: GlobalStyle, 
   let html = response.text || '<div class="h-full flex items-center justify-center">Error</div>';
   return html.replace(/```html/g, '').replace(/```/g, '').trim();
 };
+
+export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle) => {
+    return `<!doctype html><html><body>Presentation</body></html>`; 
+}
