@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, useAnimate } from 'framer-motion';
 import { Slide, GlobalStyle } from '../types';
 
@@ -8,15 +9,51 @@ interface PresentationRunnerProps {
     onClose: () => void;
 }
 
-// Exporting this for reuse in VideoStage
+// Exporting this for reuse in VideoStage and SlidePreview
 export const SlideRenderer: React.FC<{ 
     html: string; 
     step: number; 
     fontFamily: string;
     className?: string;
-}> = ({ html, step, fontFamily, className }) => {
+    baseWidth?: number;  // Default 1280 (720p 16:9)
+    baseHeight?: number; // Default 720
+}> = ({ html, step, fontFamily, className, baseWidth = 1280, baseHeight = 720 }) => {
     const [scope, animate] = useAnimate();
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [scale, setScale] = useState(1);
 
+    // --- SCALING LOGIC ---
+    useEffect(() => {
+        const updateScale = () => {
+            if (containerRef.current && containerRef.current.parentElement) {
+                const parent = containerRef.current.parentElement;
+                const { width, height } = parent.getBoundingClientRect();
+                
+                // Avoid division by zero or hidden elements
+                if (width === 0 || height === 0) return;
+
+                // Calculate "contain" scale factor
+                const scaleX = width / baseWidth;
+                const scaleY = height / baseHeight;
+                const newScale = Math.min(scaleX, scaleY);
+                
+                setScale(newScale);
+            }
+        };
+
+        // Initial calculation
+        updateScale();
+        
+        // Observe parent resize
+        const resizeObserver = new ResizeObserver(updateScale);
+        if (containerRef.current?.parentElement) {
+            resizeObserver.observe(containerRef.current.parentElement);
+        }
+        
+        return () => resizeObserver.disconnect();
+    }, [baseWidth, baseHeight]);
+
+    // --- ANIMATION LOGIC ---
     const cssHide = `
         .slide-runner-content [data-motion] {
             opacity: 0;
@@ -49,15 +86,26 @@ export const SlideRenderer: React.FC<{
     }, [step, html, animate, scope]);
 
     return (
-        <>
+        <div className="w-full h-full flex items-center justify-center overflow-hidden">
             <style>{cssHide}</style>
             <div 
-                ref={scope}
-                className={`w-full h-full p-8 sm:p-16 flex flex-col slide-content-wrapper slide-runner-content ${className || ''}`}
-                dangerouslySetInnerHTML={{ __html: html }}
-                style={{ fontFamily }}
-            />
-        </>
+                ref={containerRef}
+                style={{
+                    width: `${baseWidth}px`,
+                    height: `${baseHeight}px`,
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'center center',
+                    fontFamily: fontFamily
+                }}
+                className="flex-shrink-0 relative bg-transparent shadow-sm"
+            >
+                <div 
+                    ref={scope}
+                    className={`w-full h-full p-12 flex flex-col slide-content-wrapper slide-runner-content ${className || ''}`}
+                    dangerouslySetInnerHTML={{ __html: html }}
+                />
+            </div>
+        </div>
     );
 };
 

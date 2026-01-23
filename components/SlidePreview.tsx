@@ -1,5 +1,7 @@
+
 import React from 'react';
 import { Slide, GlobalStyle } from '../types';
+import { SlideRenderer } from './PresentationRunner';
 
 interface SlidePreviewProps {
   slide: Slide | null;
@@ -30,7 +32,7 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, globalStyle }) => {
   return (
     <div className="h-full w-full bg-gray-900 rounded-lg shadow-2xl overflow-hidden flex flex-col">
         <div className="bg-gray-800 px-4 py-2 flex justify-between items-center border-b border-gray-700">
-            <span className="text-xs font-mono text-gray-400 uppercase">Static Preview (No Anim)</span>
+            <span className="text-xs font-mono text-gray-400 uppercase">Preview Mode</span>
             <div className="flex gap-2">
                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
@@ -51,8 +53,7 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, globalStyle }) => {
             >
                 {/* 
                    Force visibility style block for preview mode. 
-                   Since PresentationRunner hides [data-motion] initially, we need to make sure
-                   they are visible here so the user can edit them.
+                   We pass step={999} to SlideRenderer to show all elements.
                 */}
                 <style>{`
                     .slide-preview-container [data-motion] {
@@ -61,10 +62,10 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({ slide, globalStyle }) => {
                     }
                 `}</style>
 
-                <div 
-                    className="w-full h-full flex flex-col text-[10px] sm:text-[12px] md:text-[16px] lg:text-[20px] p-8 overflow-y-auto"
-                    style={{ color: '#fff' }} 
-                    dangerouslySetInnerHTML={{ __html: slide.content_html || '<div class="flex items-center justify-center h-full"><h1>空白幻灯片</h1></div>' }} 
+                <SlideRenderer 
+                    html={slide.content_html || '<div class="flex items-center justify-center h-full"><h1>空白幻灯片</h1></div>'}
+                    step={999} // Show everything
+                    fontFamily={globalStyle.fontFamily}
                 />
             </div>
         </div>
