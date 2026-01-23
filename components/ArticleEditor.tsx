@@ -1,38 +1,162 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import TiptapEditor from './TiptapEditor';
-import { transformToWechatHtml, extractOutline, THEMES } from '../utils/wechatStyleEngine';
+import { transformToWechatHtml, THEMES } from '../utils/wechatStyleEngine';
 import AssetLibrary from './AssetLibrary';
-import { getProfile, saveProfile } from '../services/styleManager';
-import { UserStyleProfile } from '../types';
-import { generateArticleSection } from '../services/geminiService';
+import CMSChatPanel from './CMSChatPanel'; // New Import
+import { getProfile, saveProfile, learnFromCorrection } from '../services/styleManager';
+import { cmsAgentChat } from '../services/geminiService'; // New Service
+import { UserStyleProfile, CMSMessage, ResearchTopic } from '../types';
+import { Editor } from '@tiptap/react';
 
 interface ArticleEditorProps {
     content: string;
     onChange: (text: string) => void;
     onGenerateScript: () => void;
     isProcessing: boolean;
-    topicTitle?: string;
+    topic?: ResearchTopic; // Full topic object
 }
 
-const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGenerateScript, isProcessing, topicTitle }) => {
-    const [title, setTitle] = useState(topicTitle || "未命名创作");
+const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGenerateScript, isProcessing, topic }) => {
+    // --- STATE ---
+    const [title, setTitle] = useState(topic?.title || "未命名创作");
     const [activeTheme, setActiveTheme] = useState('kaoxing'); 
     const [previewHtml, setPreviewHtml] = useState('');
-    const [outline, setOutline] = useState<{id: string, level: number, text: string}[]>([]);
-    
-    // CMS Features
-    const [showAssetLib, setShowAssetLib] = useState(false);
     const [userProfile, setUserProfile] = useState<UserStyleProfile>(getProfile());
+    
+    // UI Toggles
+    const [showAssetLib, setShowAssetLib] = useState(false);
     const [showStyleSettings, setShowStyleSettings] = useState(false);
-    const [showInteractiveGuide, setShowInteractiveGuide] = useState(false);
+    
+    // Agent State
+    const [messages, setMessages] = useState<CMSMessage[]>([]);
+    const [isAgentTyping, setIsAgentTyping] = useState(false);
+    const [currentSelection, setCurrentSelection] = useState('');
+    
+    // Editor Ref
+    const editorRef = useRef<Editor | null>(null);
 
+    // --- EFFECTS ---
+
+    // 1. Proactive Agent Initialization
+    useEffect(() => {
+        if (topic && messages.length === 0) {
+            // Simulate the agent reading the research and proposing angles
+            const initMessage = `已为您深度阅读了关于【${topic.title}】的资料。基于您的【${userProfile.tone}】风格，我为您构思了以下 3 个切入点，您想用哪个？`;
+            
+            const agentMsg: CMSMessage = {
+                id: uuidv4(),
+                role: 'assistant',
+                content: initMessage,
+                timestamp: Date.now(),
+                uiOptions: [
+                    { label: '🔥 痛点切入 (制造焦虑)', value: 'angle_pain' },
+                    { label: '📖 故事切入 (反直觉案例)', value: 'angle_story' },
+                    { label: '📊 干货切入 (实操盘点)', value: 'angle_data' }
+                ]
+            };
+            setMessages([agentMsg]);
+        }
+    }, [topic, userProfile]);
+
+    // 2. Preview Update
     useEffect(() => {
         const rawHtml = `<h1>${title}</h1>${content}`;
         const styled = transformToWechatHtml(rawHtml, activeTheme);
         setPreviewHtml(styled);
-        setOutline(extractOutline(content));
     }, [content, title, activeTheme]);
 
+    // --- AGENT LOGIC ---
+
+    const handleSendMessage = async (text: string) => {
+        // Add User Message
+        const userMsg: CMSMessage = { id: uuidv4(), role: 'user', content: text, timestamp: Date.now() };
+        setMessages(prev => [...prev, userMsg]);
+        setIsAgentTyping(true);
+
+        try {
+            // Call Gemini Agent
+            const response = await cmsAgentChat(
+                [...messages, userMsg], 
+                text, 
+                { 
+                    topic: topic || null, 
+                    profile: userProfile, 
+                    currentSelection: currentSelection,
+                    articleContent: content
+                }
+            );
+
+            // Execute Tool Action
+            await executeAgentAction(response.action);
+
+            // Add Assistant Message
+            const aiMsg: CMSMessage = { 
+                id: uuidv4(), 
+                role: 'assistant', 
+                content: response.reply, 
+                timestamp: Date.now(),
+                // If action was ask_user_choice, populate uiOptions
+                uiOptions: response.action.type === 'ask_user_choice' ? response.action.args.options : undefined
+            };
+            setMessages(prev => [...prev, aiMsg]);
+
+        } catch (error) {
+            console.error(error);
+            setMessages(prev => [...prev, { id: uuidv4(), role: 'assistant', content: '系统繁忙，请重试。', timestamp: Date.now() }]);
+        } finally {
+            setIsAgentTyping(false);
+        }
+    };
+
+    const handleOptionSelect = (value: string, label: string) => {
+        // Mark previous options as executed/selected (visual feedback)
+        setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last.role === 'assistant' && last.uiOptions) {
+                return [...prev.slice(0, -1), { ...last, isActionExecuted: true }];
+            }
+            return prev;
+        });
+
+        // Treat selection as a user message
+        handleSendMessage(`我选择：${label}`);
+    };
+
+    const executeAgentAction = async (action: { type: string, args: any }) => {
+        if (!editorRef.current) return;
+        const editor = editorRef.current;
+
+        switch (action.type) {
+            case 'write_to_editor':
+                editor.chain().focus().insertContent(action.args.content).run();
+                break;
+            case 'rewrite_selection':
+                // Check if selection exists, if not, maybe insert
+                if (editor.state.selection.empty) {
+                    editor.chain().focus().insertContent(action.args.content).run();
+                } else {
+                    editor.chain().focus().deleteSelection().insertContent(action.args.content).run();
+                }
+                // Mock Learning
+                learnFromCorrection("Original Text", action.args.content);
+                break;
+            case 'apply_theme':
+                if (action.args.themeId && THEMES[action.args.themeId]) {
+                    setActiveTheme(action.args.themeId);
+                }
+                break;
+            case 'insert_image':
+                // For demo, we just append image html
+                editor.chain().focus().insertContent(`<img src="${action.args.url}" />`).run();
+                break;
+            default:
+                break;
+        }
+    };
+
+    // --- UI HANDLERS ---
     const handleCopy = () => {
         const previewNode = document.getElementById('wechat-preview-content');
         if (previewNode) {
@@ -46,21 +170,10 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     };
 
     const handleAssetInsert = (url: string, alt: string) => {
-        const imgHtml = `<img src="${url}" alt="${alt}" />`;
-        onChange(content + `<p>${imgHtml}</p>`);
+        if(editorRef.current) {
+            editorRef.current.chain().focus().setImage({ src: url, alt }).run();
+        }
         setShowAssetLib(false);
-    };
-    
-    const handleGuideSelection = async (option: string) => {
-        setShowInteractiveGuide(false);
-        // Call AI with the selected option context
-        const newText = await generateArticleSection(content, `Continue writing using the '${option}' approach.`, userProfile);
-        onChange(content + newText);
-    };
-
-    // Triggered when user asks for AI help but we want to confirm style first
-    const triggerAiGuide = () => {
-        setShowInteractiveGuide(true);
     };
 
     return (
@@ -78,9 +191,6 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    <button onClick={triggerAiGuide} className="text-xs text-blue-400 hover:text-white mr-2 border border-blue-900 rounded px-2 py-1">
-                        <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 续写
-                    </button>
                     <button onClick={() => setShowStyleSettings(!showStyleSettings)} className="text-xs text-gray-400 hover:text-white mr-2">
                         <i className="fa-solid fa-user-gear mr-1"></i> 风格
                     </button>
@@ -95,57 +205,17 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
             </div>
 
             <div className="flex-1 flex overflow-hidden relative">
-                {/* LEFT: Outline / Style */}
-                <div className="w-64 bg-[#141414] border-r border-gray-800 flex flex-col hidden md:flex">
-                     {showStyleSettings ? (
-                        <div className="p-4 flex flex-col h-full overflow-y-auto">
-                            <h3 className="text-xs font-bold text-white mb-4">风格记忆体配置</h3>
-                            <div className="mb-4">
-                                <label className="text-[10px] text-gray-500 block mb-1">语气 (Tone)</label>
-                                <select 
-                                    value={userProfile.tone}
-                                    onChange={(e) => { const p = { ...userProfile, tone: e.target.value }; setUserProfile(p); saveProfile(p); }}
-                                    className="w-full bg-[#222] text-white text-xs p-2 rounded border border-gray-700"
-                                >
-                                    <option value="Professional">专业严谨</option>
-                                    <option value="Witty">幽默风趣</option>
-                                    <option value="Emotional">情感共鸣</option>
-                                </select>
-                            </div>
-                            <div className="mb-4">
-                                <label className="text-[10px] text-gray-500 block mb-1">固定结尾</label>
-                                <textarea 
-                                    value={userProfile.preferredEnding}
-                                    onChange={(e) => { const p = { ...userProfile, preferredEnding: e.target.value }; setUserProfile(p); saveProfile(p); }}
-                                    className="w-full bg-[#222] text-white text-xs p-2 rounded border border-gray-700 h-20"
-                                />
-                            </div>
-                             <button onClick={() => setShowStyleSettings(false)} className="mt-auto w-full bg-blue-600 text-white text-xs py-2 rounded">保存</button>
-                        </div>
-                    ) : (
-                        <>
-                             <div className="p-4 border-b border-gray-800"><span className="text-xs font-bold text-gray-500 uppercase">大纲</span></div>
-                             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                                {outline.map((item, idx) => (<div key={idx} className={`text-sm text-gray-400 pl-${(item.level-1)*2} hover:text-blue-400 cursor-pointer`}>{item.text}</div>))}
-                            </div>
-                        </>
-                    )}
-                </div>
+                
+                {/* 1. LEFT: INTELLIGENT CHAT AGENT (Replaces Outline) */}
+                <CMSChatPanel 
+                    messages={messages} 
+                    onSendMessage={handleSendMessage} 
+                    onOptionSelect={handleOptionSelect}
+                    isTyping={isAgentTyping}
+                />
 
-                {/* MIDDLE: Editor */}
-                <div className="flex-1 flex flex-col bg-[#1a1a1a] relative">
-                    {/* Interactive Guide Overlay */}
-                    {showInteractiveGuide && (
-                        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#222] border border-gray-700 p-4 rounded-xl shadow-2xl w-96 animate-in fade-in zoom-in">
-                            <h3 className="text-sm font-bold text-white mb-3">🤔 AI: 这一段怎么写？</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button onClick={() => handleGuideSelection('Storytelling')} className="bg-blue-900/30 text-blue-300 p-2 rounded text-xs hover:bg-blue-900/50">📖 讲故事</button>
-                                <button onClick={() => handleGuideSelection('Data Driven')} className="bg-green-900/30 text-green-300 p-2 rounded text-xs hover:bg-green-900/50">📊 摆数据</button>
-                                <button onClick={() => handleGuideSelection('Emotional')} className="bg-red-900/30 text-red-300 p-2 rounded text-xs hover:bg-red-900/50">🔥 煽情绪</button>
-                            </div>
-                        </div>
-                    )}
-
+                {/* 2. MIDDLE: EDITOR */}
+                <div className="flex-1 flex flex-col bg-[#1a1a1a] relative border-l border-r border-gray-800">
                     <div className="flex-1 overflow-y-auto custom-scrollbar">
                          <div className="max-w-3xl mx-auto py-12 px-8 min-h-full">
                             <input 
@@ -153,14 +223,20 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
                                 className="w-full bg-transparent text-4xl font-bold text-gray-100 mb-8 border-none focus:outline-none"
+                                placeholder="输入标题..."
                             />
-                            <TiptapEditor content={content} onChange={onChange} />
+                            <TiptapEditor 
+                                content={content} 
+                                onChange={onChange} 
+                                onEditorReady={(ed) => editorRef.current = ed}
+                                onSelectionChange={setCurrentSelection}
+                            />
                          </div>
                     </div>
                 </div>
 
-                {/* RIGHT: Preview */}
-                <div className="w-[360px] bg-[#141414] border-l border-gray-800 flex flex-col shrink-0">
+                {/* 3. RIGHT: PREVIEW */}
+                <div className="w-[360px] bg-[#141414] flex flex-col shrink-0">
                     <div className="p-3 bg-[#141414] border-b border-gray-800 flex justify-between">
                          <span className="text-xs font-bold text-gray-500 uppercase">WeChat Preview</span>
                          <div className="flex gap-1">
@@ -177,7 +253,28 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                     </div>
                 </div>
 
+                {/* Drawers */}
                 {showAssetLib && <AssetLibrary onInsert={handleAssetInsert} onClose={() => setShowAssetLib(false)} />}
+                
+                {/* Style Settings Drawer (Simplified) */}
+                {showStyleSettings && (
+                    <div className="absolute top-0 left-0 w-64 h-full bg-[#1e1e1e] shadow-2xl z-40 p-4 animate-in slide-in-from-left">
+                        <h3 className="text-xs font-bold text-white mb-4">风格配置</h3>
+                        <div className="mb-4">
+                            <label className="text-[10px] text-gray-500 block mb-1">语气 (Tone)</label>
+                            <select 
+                                value={userProfile.tone}
+                                onChange={(e) => { const p = { ...userProfile, tone: e.target.value }; setUserProfile(p); saveProfile(p); }}
+                                className="w-full bg-[#333] text-white text-xs p-2 rounded"
+                            >
+                                <option value="Professional">专业严谨</option>
+                                <option value="Witty">幽默风趣 (朱迪警官)</option>
+                                <option value="Emotional">情感共鸣</option>
+                            </select>
+                        </div>
+                        <button onClick={() => setShowStyleSettings(false)} className="bg-blue-600 text-white text-xs w-full py-2 rounded">关闭</button>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -85,6 +85,23 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+// --- CMS AGENT TYPES ---
+export type CMSActionType = 'write_to_editor' | 'rewrite_selection' | 'apply_theme' | 'ask_user_choice' | 'none';
+
+export interface CMSAgentResponse {
+    thought: string;   // Chain of thought
+    reply: string;     // Text to show user
+    action: {
+        type: CMSActionType;
+        args: any;
+    };
+}
+
+export interface CMSMessage extends ChatMessage {
+    uiOptions?: { label: string; value: string; style?: string }[]; // Buttons for user choice
+    isActionExecuted?: boolean;
+}
+
 export enum AgentMode {
   PLANNER = 'PLANNER', 
   DESIGNER = 'DESIGNER', 

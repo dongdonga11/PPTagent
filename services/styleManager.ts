@@ -40,3 +40,9 @@ export const updateProfileField = (field: keyof UserStyleProfile, value: any) =>
     saveProfile(updated);
     return updated;
 };
+
+export const learnFromCorrection = (original: string, corrected: string) => {
+    // In a real scenario, this would send data to a backend for fine-tuning
+    // or store it locally to prompt the model with "Previous Corrections".
+    console.log(`[StyleManager] Learned correction: "${original}" -> "${corrected}"`);
+};
