@@ -129,27 +129,24 @@ const App: React.FC = () => {
           slides: [], // Reset slides for new project
           currentArticleId: article.id // Link back
       }));
-      // If module is PPT/Video, trigger auto-generation hint or logic here if needed
+      setShowArticlePicker(false);
   };
 
   const handleModeSwitch = (newMode: AppMode) => {
       if (newMode === AppMode.HOME) {
           setState(prev => ({ ...prev, mode: newMode }));
       } else {
-          // Check if we want to import?
-          // For now, just switch, but maybe we show a picker inside the module
+          // Switch mode and reset project state for a fresh start
           setState(prev => ({ 
               ...prev, 
               mode: newMode,
-              // If switching to a creative module without deriving, reset project state
               sourceMaterial: '',
               slides: [],
               title: '未命名项目'
           }));
-          // Trigger article picker if empty
-          if ([AppMode.PRESENTATION, AppMode.VIDEO, AppMode.POSTER].includes(newMode)) {
-              setShowArticlePicker(true);
-          }
+          
+          // Do NOT auto-open picker. Let the specific module UI handle the "Empty State" choice.
+          setShowArticlePicker(false); 
       }
   };
 
@@ -180,15 +177,23 @@ const App: React.FC = () => {
 
   // --- ACTIONS: GENERATION ---
 
-  const handleGenerateScriptFromArticle = async () => {
-      if (!state.sourceMaterial.trim()) return;
+  const handleGenerateScriptFromArticle = async (contentOverride?: string, articleTitle?: string) => {
+      const contentToUse = contentOverride || state.sourceMaterial;
+      if (!contentToUse?.trim()) return;
       
       setIsProcessing(true);
       setAgentMode(AgentMode.PLANNER);
-      addMessage('user', "正在启动脚本工厂，拆解分镜中...");
+      
+      // Send Feedback to Chat Interface instead of blocking UI
+      if (articleTitle) {
+          addMessage('system', `已选择文章：«${articleTitle}»`);
+          addMessage('assistant', `正在阅读文章并规划演示大纲，请稍候...`);
+      } else {
+          addMessage('user', "正在启动脚本工厂，拆解分镜中...");
+      }
       
       try {
-          const scenes = await generatePresentationOutline(state.sourceMaterial);
+          const scenes = await generatePresentationOutline(contentToUse);
           if (scenes.length > 0) {
             const newSlides: Slide[] = scenes.map(item => ({
                 id: uuidv4(),
@@ -301,7 +306,7 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2 text-gray-400 text-xs">
                              <button onClick={() => setShowArticlePicker(true)} className="hover:text-white"><i className="fa-solid fa-file-import mr-1"></i> 导入文章</button>
                              <span>|</span>
-                             <button onClick={handleGenerateScriptFromArticle} className="hover:text-white"><i className="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 生成脚本</button>
+                             <button onClick={() => handleGenerateScriptFromArticle()} className="hover:text-white"><i className="fa-solid fa-wand-magic-sparkles mr-1"></i> AI 生成脚本</button>
                         </div>
                         <span className="text-xs text-gray-500">{state.title}</span>
                      </div>
@@ -335,26 +340,30 @@ const App: React.FC = () => {
         default:
             return (
                  <div className="flex h-full">
-                    {/* Floating Import Button if empty */}
-                    {state.slides.length === 0 && (
+                    {/* Floating Import Button if empty AND NOT PROCESSING. 
+                        If processing, we hide this so the editor UI (Chat, etc.) is visible.
+                    */}
+                    {state.slides.length === 0 && !isProcessing && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-                            <div className="bg-[#1a1a1a] p-8 rounded-xl border border-gray-800 shadow-2xl text-center max-w-md">
-                                <i className="fa-solid fa-person-chalkboard text-4xl text-blue-500 mb-4"></i>
+                            <div className="bg-[#1a1a1a] p-8 rounded-xl border border-gray-800 shadow-2xl text-center max-w-md animate-in zoom-in-95 duration-300">
+                                <div className="w-12 h-12 bg-blue-900/20 rounded-lg flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+                                    <i className="fa-solid fa-person-chalkboard text-2xl text-blue-400"></i>
+                                </div>
                                 <h2 className="text-xl font-bold text-white mb-2">新建演示文稿</h2>
-                                <p className="text-gray-400 text-sm mb-6">您可以从现有的文章库导入内容，让 AI 自动生成大纲，或者从空白页开始。</p>
+                                <p className="text-gray-400 text-sm mb-6 leading-relaxed">您可以从现有的文章库导入内容，让 AI 自动生成大纲，或者从空白页开始。</p>
                                 <div className="flex gap-4 justify-center">
                                     <button 
                                         onClick={() => setShowArticlePicker(true)}
-                                        className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold"
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg hover:shadow-blue-500/20 transition-all flex items-center gap-2"
                                     >
-                                        从文章导入
+                                        <i className="fa-solid fa-file-import"></i> 从文章导入
                                     </button>
                                     <button 
                                         onClick={() => {
-                                             const newSlide = { id: uuidv4(), title: '封面', visual_intent: '标题页', visual_layout: 'Cover', narration: '', duration: 5, markers: [], content_html: '', isGenerated: false, isLoading: false, speaker_notes: '' } as Slide;
-                                             setState(prev => ({...prev, slides: [newSlide]}));
+                                                const newSlide = { id: uuidv4(), title: '封面', visual_intent: '标题页', visual_layout: 'Cover', narration: '', duration: 5, markers: [], content_html: '', isGenerated: false, isLoading: false, speaker_notes: '' } as Slide;
+                                                setState(prev => ({...prev, slides: [newSlide]}));
                                         }}
-                                        className="bg-gray-700 hover:bg-gray-600 text-gray-200 px-6 py-2 rounded-lg"
+                                        className="bg-gray-800 hover:bg-gray-700 text-gray-200 px-5 py-2.5 rounded-lg border border-gray-700 hover:border-gray-600 transition-all"
                                     >
                                         从空白开始
                                     </button>
@@ -380,7 +389,7 @@ const App: React.FC = () => {
                                 <button onClick={() => setShowArticlePicker(true)} className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 hover:text-white border border-gray-700">
                                     <i className="fa-solid fa-file-import"></i> 更换文章源
                                 </button>
-                                <button onClick={handleGenerateScriptFromArticle} className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 hover:text-white border border-gray-700" title="基于当前文章生成Slide">
+                                <button onClick={() => handleGenerateScriptFromArticle()} className="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400 hover:text-white border border-gray-700" title="基于当前文章生成Slide">
                                     <i className="fa-solid fa-wand-magic-sparkles"></i> AI 生成分镜
                                 </button>
                              </div>
@@ -408,7 +417,7 @@ const App: React.FC = () => {
       if (!showArticlePicker) return null;
       return (
           <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8">
-              <div className="bg-[#1a1a1a] w-full max-w-3xl rounded-xl border border-gray-700 shadow-2xl flex flex-col max-h-[80vh]">
+              <div className="bg-[#1a1a1a] w-full max-w-3xl rounded-xl border border-gray-700 shadow-2xl flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
                   <div className="p-6 border-b border-gray-700 flex justify-between items-center">
                       <h3 className="text-xl font-bold text-white">选择文章源 (Select Source)</h3>
                       <button onClick={() => setShowArticlePicker(false)} className="text-gray-400 hover:text-white"><i className="fa-solid fa-xmark"></i></button>
@@ -418,14 +427,18 @@ const App: React.FC = () => {
                           <div 
                             key={article.id} 
                             onClick={() => {
+                                // 1. Set State
                                 setState(prev => ({
                                     ...prev,
                                     sourceMaterial: article.content, // Load content
                                     title: article.title + ' (Derived)',
-                                    slides: [] // Reset slides
+                                    slides: [] // Reset slides to trigger empty state logic if needed
                                 }));
+                                // 2. Close Picker
                                 setShowArticlePicker(false);
-                                // Optional: auto trigger generation?
+                                
+                                // 3. TRIGGER GENERATION IMMEDIATELY (Pass Title for Chat Feedback)
+                                handleGenerateScriptFromArticle(article.content, article.title);
                             }}
                             className="bg-[#222] p-4 rounded-lg border border-gray-700 hover:border-blue-500 cursor-pointer hover:bg-[#2a2a2a] transition-all group"
                           >
