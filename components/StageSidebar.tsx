@@ -5,9 +5,10 @@ import { ProjectStage } from '../types';
 interface StageSidebarProps {
     currentStage: ProjectStage;
     onSetStage: (stage: ProjectStage) => void;
+    onOpenSettings: () => void; // NEW PROP
 }
 
-const StageSidebar: React.FC<StageSidebarProps> = ({ currentStage, onSetStage }) => {
+const StageSidebar: React.FC<StageSidebarProps> = ({ currentStage, onSetStage, onOpenSettings }) => {
     
     // Grouped Navigation
     const navItems = [
@@ -65,7 +66,11 @@ const StageSidebar: React.FC<StageSidebarProps> = ({ currentStage, onSetStage })
 
             {/* Bottom Actions */}
             <div className="mt-auto flex flex-col gap-4 pb-2">
-                 <button className="w-8 h-8 rounded-full bg-gray-800 text-gray-400 hover:text-white flex items-center justify-center text-xs transition-colors">
+                 <button 
+                    onClick={onOpenSettings}
+                    className="w-8 h-8 rounded-full bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 flex items-center justify-center text-xs transition-colors shadow-lg border border-gray-700"
+                    title="全局设置"
+                 >
                     <i className="fa-solid fa-gear"></i>
                  </button>
             </div>

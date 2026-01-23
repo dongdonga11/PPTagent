@@ -1,3 +1,4 @@
+
 import { UserStyleProfile } from "../types";
 
 const STORAGE_KEY = 'smart_cms_user_profile';
@@ -11,6 +12,13 @@ const DEFAULT_PROFILE: UserStyleProfile = {
     colorScheme: {
         primary: '#00b96b', // WeChat Green
         secondary: '#f2fcf6'
+    },
+    githubConfig: {
+        token: '',
+        owner: '',
+        repo: '',
+        branch: 'main',
+        path: 'articles/'
     }
 };
 
@@ -18,7 +26,9 @@ export const getProfile = (): UserStyleProfile => {
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
-            return JSON.parse(stored);
+            const parsed = JSON.parse(stored);
+            // Merge with default to ensure new fields (like githubConfig) exist if old profile is loaded
+            return { ...DEFAULT_PROFILE, ...parsed, githubConfig: { ...DEFAULT_PROFILE.githubConfig, ...(parsed.githubConfig || {}) } };
         }
     } catch (e) {
         console.error("Failed to load profile", e);

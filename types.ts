@@ -38,6 +38,14 @@ export interface GlobalStyle {
 
 // --- CMS SPECIFIC TYPES ---
 
+export interface GitHubConfig {
+    token: string;
+    owner: string;
+    repo: string;
+    branch: string;
+    path: string; // e.g. "drafts/"
+}
+
 export interface UserStyleProfile {
     id: string;
     name: string;
@@ -48,6 +56,7 @@ export interface UserStyleProfile {
         primary: string;
         secondary: string;
     };
+    githubConfig?: GitHubConfig;
 }
 
 export interface ResearchTopic {

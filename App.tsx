@@ -5,7 +5,7 @@ import { PresentationState, Slide, ChatMessage, AgentMode, GlobalStyle, ProjectS
 import StageSidebar from './components/StageSidebar';
 import ProjectDashboard from './components/ProjectDashboard';
 import ArticleEditor from './components/ArticleEditor';
-import PosterEditor from './components/PosterEditor'; // NEW
+import PosterEditor from './components/PosterEditor'; 
 import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
@@ -14,6 +14,7 @@ import ScriptEngine from './components/ScriptEngine';
 import PresentationRunner from './components/PresentationRunner';
 import VideoStage from './components/VideoStage'; 
 import ResearchPanel from './components/ResearchPanel'; 
+import GlobalSettingsModal from './components/GlobalSettingsModal'; // NEW
 import { generatePresentationOutline, generateSlideHtml, generateTheme } from './services/geminiService';
 import { calculateDuration } from './utils/scriptUtils';
 
@@ -29,7 +30,7 @@ const App: React.FC = () => {
   const [state, setState] = useState<PresentationState>({
     projectId: uuidv4(),
     title: '未命名项目',
-    stage: ProjectStage.DASHBOARD, // Default to Dashboard (Central Kitchen)
+    stage: ProjectStage.DASHBOARD, 
     sourceMaterial: '',
     slides: [],
     globalStyle: DEFAULT_STYLE
@@ -41,6 +42,7 @@ const App: React.FC = () => {
   const [editorMode, setEditorMode] = useState<'code' | 'script' | 'none'>('none');
   const [mode, setMode] = useState<AgentMode>(AgentMode.IDLE);
   const [isPresenting, setIsPresenting] = useState(false);
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false); // NEW STATE
 
   const activeSlide = state.slides.find(s => s.id === activeSlideId) || null;
 
@@ -67,7 +69,6 @@ const App: React.FC = () => {
           ...prev,
           selectedTopic: topic,
           title: topic.title,
-          // We set an initial H1, but rely on the Agent to fill the rest
           sourceMaterial: ``, 
           stage: ProjectStage.STORY 
       }));
@@ -75,7 +76,6 @@ const App: React.FC = () => {
 
   // --- ACTIONS ---
   
-  // 1. STORY STAGE: A2S - Article to Scenes
   const handleGenerateScriptFromArticle = async () => {
       if (!state.sourceMaterial.trim()) return;
       
@@ -117,7 +117,6 @@ const App: React.FC = () => {
       }
   };
 
-  // 2. VISUAL STAGE
   const handleGenerateSlideVisual = async (slideId: string, customInstruction?: string) => {
       const slide = state.slides.find(s => s.id === slideId);
       if (!slide) return;
@@ -130,7 +129,6 @@ const App: React.FC = () => {
       }
   };
 
-  // 3. CHAT HANDLER
   const handleSendMessage = async (text: string) => {
     addMessage('user', text);
     if (text.toLowerCase().includes('color') || text.includes('颜色') || text.includes('风格')) {
@@ -143,7 +141,6 @@ const App: React.FC = () => {
         setMode(AgentMode.IDLE);
         return;
     }
-    // Existing chat handlers for other stages...
   };
 
   // --- RENDERERS ---
@@ -171,11 +168,11 @@ const App: React.FC = () => {
                     onChange={(text) => setState(prev => ({ ...prev, sourceMaterial: text }))}
                     onGenerateScript={handleGenerateScriptFromArticle}
                     isProcessing={isProcessing}
-                    topic={state.selectedTopic} // Pass the full topic context
+                    topic={state.selectedTopic} 
                 />
             );
         
-        case ProjectStage.POSTER: // NEW
+        case ProjectStage.POSTER: 
             return (
                 <PosterEditor 
                     sourceMaterial={state.sourceMaterial}
@@ -185,7 +182,6 @@ const App: React.FC = () => {
             );
 
         case ProjectStage.SCRIPT:
-            // USE NEW ENGINE WRAPPER
             return (
                 <ScriptEngine 
                     slides={state.slides}
@@ -252,9 +248,17 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen text-gray-100 font-sans overflow-hidden bg-black">
-      <StageSidebar currentStage={state.stage} onSetStage={(stage) => setState(prev => ({ ...prev, stage }))} />
+      <StageSidebar 
+        currentStage={state.stage} 
+        onSetStage={(stage) => setState(prev => ({ ...prev, stage }))} 
+        onOpenSettings={() => setShowGlobalSettings(true)} 
+      />
       <div className="flex-1 h-full overflow-hidden relative">{renderMainArea()}</div>
+      
       {isPresenting && <PresentationRunner slides={state.slides} globalStyle={state.globalStyle} onClose={() => setIsPresenting(false)} />}
+      
+      {/* Global Settings Modal */}
+      <GlobalSettingsModal isOpen={showGlobalSettings} onClose={() => setShowGlobalSettings(false)} />
     </div>
   );
 };

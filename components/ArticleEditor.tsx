@@ -7,6 +7,7 @@ import AssetLibrary from './AssetLibrary';
 import CMSChatPanel from './CMSChatPanel';
 import { getProfile, saveProfile, learnFromCorrection } from '../services/styleManager';
 import { cmsAgentChat, generateAiImage } from '../services/geminiService';
+import { pushToGitHub } from '../services/githubService'; 
 import { UserStyleProfile, CMSMessage, ResearchTopic } from '../types';
 import { Editor } from '@tiptap/react';
 
@@ -15,7 +16,7 @@ interface ArticleEditorProps {
     onChange: (text: string) => void;
     onGenerateScript: () => void;
     isProcessing: boolean;
-    topic?: ResearchTopic; // Full topic object
+    topic?: ResearchTopic; 
 }
 
 const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGenerateScript, isProcessing, topic }) => {
@@ -23,11 +24,10 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     const [title, setTitle] = useState(topic?.title || "未命名创作");
     const [activeTheme, setActiveTheme] = useState('kaoxing'); 
     const [previewHtml, setPreviewHtml] = useState('');
-    const [userProfile, setUserProfile] = useState<UserStyleProfile>(getProfile());
     
     // UI Toggles
     const [showAssetLib, setShowAssetLib] = useState(false);
-    const [showStyleSettings, setShowStyleSettings] = useState(false);
+    const [isSyncingGithub, setIsSyncingGithub] = useState(false);
     
     // Agent State
     const [messages, setMessages] = useState<CMSMessage[]>([]);
@@ -36,6 +36,9 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     
     // Editor Ref
     const editorRef = useRef<Editor | null>(null);
+
+    // Profile (Read only here, modified via global settings)
+    const userProfile = getProfile();
 
     // --- EFFECTS ---
 
@@ -56,7 +59,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
             };
             setMessages([agentMsg]);
         }
-    }, [topic, userProfile]);
+    }, [topic]);
 
     // 2. Selection Listener -> UI Feedback
     useEffect(() => {
@@ -71,6 +74,38 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         const styled = transformToWechatHtml(rawHtml, activeTheme);
         setPreviewHtml(styled);
     }, [content, title, activeTheme]);
+
+    // --- ACTIONS ---
+
+    const handleGitHubSync = async () => {
+        // Reload profile to get latest settings
+        const currentProfile = getProfile();
+        
+        if (!currentProfile.githubConfig?.token) {
+            alert("请先点击左下角齿轮，在【全局设置】中配置 GitHub Token");
+            return;
+        }
+        setIsSyncingGithub(true);
+        try {
+            const fileName = `${title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')}.html`;
+            const result = await pushToGitHub(
+                currentProfile.githubConfig,
+                fileName,
+                previewHtml, 
+                `Update article: ${title}`
+            );
+
+            if (result.success) {
+                alert(`✅ 同步成功！\nURL: ${result.url}`);
+            } else {
+                alert(`❌ 同步失败: ${result.message}`);
+            }
+        } catch (e) {
+            alert("Sync Error");
+        } finally {
+            setIsSyncingGithub(false);
+        }
+    };
 
     // --- AGENT LOGIC ---
 
@@ -186,13 +221,10 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         if(!editorRef.current) return;
         
         if (type === 'video') {
-            // Best effort video insertion using HTML since Tiptap Image extension doesn't support video
-            // Note: Tiptap might sanitize this depending on configuration, but allowing it for now.
             editorRef.current.chain().focus().insertContent(`<video src="${url}" controls class="w-full rounded-lg my-4"></video><p></p>`).run();
         } else {
             editorRef.current.chain().focus().setImage({ src: url, alt }).run();
         }
-        // Don't auto close, user might want to insert multiple
     };
 
     return (
@@ -210,14 +242,25 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    <button onClick={() => setShowStyleSettings(!showStyleSettings)} className="text-xs text-gray-400 hover:text-white mr-2">
-                        <i className="fa-solid fa-user-gear mr-1"></i> 风格
-                    </button>
                     <button onClick={() => setShowAssetLib(!showAssetLib)} className={`text-xs mr-2 transition-colors ${showAssetLib ? 'text-blue-400 font-bold' : 'text-gray-400 hover:text-white'}`}>
                         <i className="fa-solid fa-images mr-1"></i> 素材库
                     </button>
                     
-                    {/* GENERATE SCRIPT BUTTON - UPDATED */}
+                    {/* GITHUB SYNC */}
+                    <button 
+                        onClick={handleGitHubSync}
+                        disabled={isSyncingGithub}
+                        className={`text-xs mr-2 flex items-center gap-2 px-3 py-1.5 rounded transition-all border border-gray-700
+                            ${isSyncingGithub 
+                                ? 'bg-gray-800 text-gray-400 cursor-wait' 
+                                : 'hover:bg-gray-800 hover:text-white text-gray-300'
+                            }`}
+                        title={userProfile.githubConfig?.token ? "Sync to GitHub" : "请先在全局设置配置 GitHub"}
+                    >
+                         {isSyncingGithub ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-brands fa-github"></i>}
+                    </button>
+
+                    {/* GENERATE SCRIPT BUTTON */}
                     <button 
                         onClick={onGenerateScript} 
                         disabled={isProcessing}
@@ -226,12 +269,11 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                                 ? 'bg-indigo-900/30 text-indigo-300 ring-1 ring-indigo-500/50 cursor-wait' 
                                 : 'text-gray-400 hover:text-white hover:bg-gray-800'
                             }`}
-                        title="AI 智能分析文章结构并拆解为视频脚本"
                     >
                         {isProcessing ? (
                             <>
                                 <i className="fa-solid fa-circle-notch fa-spin text-indigo-400"></i>
-                                <span>正在拆解分镜...</span>
+                                <span>正在拆解...</span>
                             </>
                         ) : (
                             <>
@@ -298,26 +340,6 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
                 {/* Drawers */}
                 {showAssetLib && <AssetLibrary onInsert={handleAssetInsert} onClose={() => setShowAssetLib(false)} />}
-                
-                {/* Style Settings Drawer */}
-                {showStyleSettings && (
-                    <div className="absolute top-0 left-0 w-64 h-full bg-[#1e1e1e] shadow-2xl z-40 p-4 animate-in slide-in-from-left">
-                        <h3 className="text-xs font-bold text-white mb-4">风格配置</h3>
-                        <div className="mb-4">
-                            <label className="text-[10px] text-gray-500 block mb-1">语气 (Tone)</label>
-                            <select 
-                                value={userProfile.tone}
-                                onChange={(e) => { const p = { ...userProfile, tone: e.target.value }; setUserProfile(p); saveProfile(p); }}
-                                className="w-full bg-[#333] text-white text-xs p-2 rounded"
-                            >
-                                <option value="Professional">专业严谨</option>
-                                <option value="Witty">幽默风趣 (朱迪警官)</option>
-                                <option value="Emotional">情感共鸣</option>
-                            </select>
-                        </div>
-                        <button onClick={() => setShowStyleSettings(false)} className="bg-blue-600 text-white text-xs w-full py-2 rounded">关闭</button>
-                    </div>
-                )}
             </div>
         </div>
     );
