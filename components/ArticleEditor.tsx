@@ -147,20 +147,15 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 break;
 
             case 'insert_image':
-                // Logic:
-                // 1. If URL is provided (rare), use it.
-                // 2. If prompt is provided (common), generate image then insert.
                 if (action.args.url) {
                      editor.chain().focus().setImage({ src: action.args.url, alt: 'AI Image' }).run();
                 } else if (action.args.prompt) {
-                     // Add a system message saying we are generating
                      setMessages(prev => [...prev, { id: uuidv4(), role: 'system', content: `正在生成配图: ${action.args.prompt}...`, timestamp: Date.now() }]);
                      try {
                          const imgData = await generateAiImage(action.args.prompt);
                          if (imgData) {
                              editor.chain().focus().setImage({ src: imgData, alt: action.args.prompt }).run();
                          } else {
-                             // Fallback
                              editor.chain().focus().insertContent(`<blockquote>[图片生成失败] Prompt: ${action.args.prompt}</blockquote>`).run();
                          }
                      } catch (e) {
@@ -187,12 +182,17 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         }
     };
 
-    const handleAssetInsert = (url: string, alt: string) => {
-        if(editorRef.current) {
+    const handleAssetInsert = (url: string, alt: string, type?: 'image' | 'video') => {
+        if(!editorRef.current) return;
+        
+        if (type === 'video') {
+            // Best effort video insertion using HTML since Tiptap Image extension doesn't support video
+            // Note: Tiptap might sanitize this depending on configuration, but allowing it for now.
+            editorRef.current.chain().focus().insertContent(`<video src="${url}" controls class="w-full rounded-lg my-4"></video><p></p>`).run();
+        } else {
             editorRef.current.chain().focus().setImage({ src: url, alt }).run();
         }
         // Don't auto close, user might want to insert multiple
-        // setShowAssetLib(false); 
     };
 
     return (

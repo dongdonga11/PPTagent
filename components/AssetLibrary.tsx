@@ -1,20 +1,20 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { generateAiImage } from '../services/geminiService';
 
 interface AssetLibraryProps {
-    onInsert: (url: string, alt: string) => void;
+    onInsert: (url: string, alt: string, type: 'image' | 'video') => void;
     onClose: () => void;
 }
 
 // Simulated "Public" folder assets
-const MOCK_LOCAL_ASSETS = [
-    { id: 'l1', url: 'https://images.unsplash.com/photo-1531297461136-82ae96c5b0a4?auto=format&fit=crop&w=600&q=80', tag: 'Tech' },
-    { id: 'l2', url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=600&q=80', tag: 'Office' },
-    { id: 'l3', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80', tag: 'Team' },
-    { id: 'l4', url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=600&q=80', tag: 'Cyber' },
-    { id: 'l5', url: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=600&q=80', tag: 'Work' },
-    { id: 'l6', url: 'https://images.unsplash.com/photo-1664575602554-2087b04935a5?auto=format&fit=crop&w=600&q=80', tag: 'Woman' },
+const INITIAL_ASSETS = [
+    { id: 'l1', url: 'https://images.unsplash.com/photo-1531297461136-82ae96c5b0a4?auto=format&fit=crop&w=600&q=80', tag: 'Tech', type: 'image' },
+    { id: 'l2', url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=600&q=80', tag: 'Office', type: 'image' },
+    { id: 'l3', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80', tag: 'Team', type: 'image' },
+    { id: 'l4', url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=600&q=80', tag: 'Cyber', type: 'image' },
+    { id: 'l5', url: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=600&q=80', tag: 'Work', type: 'image' },
+    { id: 'l6', url: 'https://images.unsplash.com/photo-1664575602554-2087b04935a5?auto=format&fit=crop&w=600&q=80', tag: 'Woman', type: 'image' },
 ];
 
 const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
@@ -22,6 +22,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
     const [aiPrompt, setAiPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+    const [localAssets, setLocalAssets] = useState(INITIAL_ASSETS);
+    
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleGenerate = async () => {
         if (!aiPrompt.trim()) return;
@@ -40,11 +43,38 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
         }
     };
 
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        Array.from(files).forEach((file: File) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                if (event.target?.result) {
+                    const type = file.type.startsWith('video') ? 'video' : 'image';
+                    setLocalAssets(prev => [{
+                        id: `upload-${Date.now()}-${Math.random()}`,
+                        url: event.target!.result as string,
+                        tag: 'Upload',
+                        type: type as 'image' | 'video'
+                    }, ...prev]);
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     // Allow dragging images into Tiptap
-    const handleDragStart = (e: React.DragEvent, url: string) => {
-        // Simple text/html drag usually works for Tiptap
-        const html = `<img src="${url}" alt="Dropped Image" />`;
-        e.dataTransfer.setData('text/html', html);
+    const handleDragStart = (e: React.DragEvent, url: string, type: 'image' | 'video') => {
+        // Tiptap drop handling is generic, but we can pass HTML
+        if (type === 'image') {
+            const html = `<img src="${url}" alt="Dropped Image" />`;
+            e.dataTransfer.setData('text/html', html);
+        } else {
+            const html = `<video src="${url}" controls></video>`;
+            e.dataTransfer.setData('text/html', html);
+        }
         e.dataTransfer.setData('text/plain', url);
     };
 
@@ -87,20 +117,48 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
                 {/* --- LOCAL ASSETS --- */}
                 {activeTab === 'local' && (
                     <div className="space-y-4">
+                        {/* Upload Area */}
+                        <div 
+                            className="border border-dashed border-gray-700 bg-gray-800/50 rounded-lg p-4 text-center cursor-pointer hover:border-blue-500 hover:bg-gray-800 transition-all group"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept="image/*,video/*,.gif" 
+                                multiple 
+                                onChange={handleFileUpload}
+                            />
+                            <i className="fa-solid fa-cloud-arrow-up text-2xl text-gray-500 group-hover:text-blue-400 mb-2"></i>
+                            <p className="text-xs text-gray-400">点击上传图片/视频</p>
+                            <p className="text-[9px] text-gray-600 mt-1">支持 JPG, PNG, GIF, MP4</p>
+                        </div>
+
                         <div className="text-[10px] text-gray-500 uppercase font-bold flex justify-between">
-                             <span>Public Folder</span>
+                             <span>Library ({localAssets.length})</span>
                              <span className="text-gray-600">Drag or Click</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            {MOCK_LOCAL_ASSETS.map((asset) => (
+                            {localAssets.map((asset) => (
                                 <div 
                                     key={asset.id} 
                                     className="relative group cursor-grab active:cursor-grabbing aspect-video rounded-lg overflow-hidden border border-gray-800 hover:border-blue-500 transition-all shadow-sm hover:shadow-lg hover:scale-[1.02]"
-                                    onClick={() => onInsert(asset.url, asset.tag)}
+                                    onClick={() => onInsert(asset.url, asset.tag, asset.type as 'image' | 'video')}
                                     draggable
-                                    onDragStart={(e) => handleDragStart(e, asset.url)}
+                                    onDragStart={(e) => handleDragStart(e, asset.url, asset.type as 'image' | 'video')}
                                 >
-                                    <img src={asset.url} alt={asset.tag} className="w-full h-full object-cover" />
+                                    {asset.type === 'video' ? (
+                                        <video src={asset.url} className="w-full h-full object-cover" muted loop onMouseOver={e => e.currentTarget.play()} onMouseOut={e => e.currentTarget.pause()} />
+                                    ) : (
+                                        <img src={asset.url} alt={asset.tag} className="w-full h-full object-cover" />
+                                    )}
+                                    
+                                    {/* Type Badge */}
+                                    {asset.type === 'video' && (
+                                        <div className="absolute top-1 right-1 bg-black/60 text-white text-[8px] px-1.5 rounded">VID</div>
+                                    )}
+
                                     {/* Hover Overlay */}
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <i className="fa-solid fa-plus text-white text-lg"></i>
@@ -154,9 +212,9 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
                                         <div 
                                             key={idx} 
                                             className="relative group cursor-pointer rounded-lg overflow-hidden border border-purple-900/50 shadow-md animate-in fade-in zoom-in duration-300"
-                                            onClick={() => onInsert(url, 'AI Generated')}
+                                            onClick={() => onInsert(url, 'AI Generated', 'image')}
                                             draggable
-                                            onDragStart={(e) => handleDragStart(e, url)}
+                                            onDragStart={(e) => handleDragStart(e, url, 'image')}
                                         >
                                             <img src={url} alt="AI" className="w-full h-auto object-cover" />
                                             <div className="absolute top-2 right-2 bg-purple-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow-lg">AI</div>
