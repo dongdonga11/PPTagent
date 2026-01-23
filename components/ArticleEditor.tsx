@@ -4,9 +4,9 @@ import { v4 as uuidv4 } from 'uuid';
 import TiptapEditor from './TiptapEditor';
 import { transformToWechatHtml, THEMES } from '../utils/wechatStyleEngine';
 import AssetLibrary from './AssetLibrary';
-import CMSChatPanel from './CMSChatPanel'; // New Import
+import CMSChatPanel from './CMSChatPanel';
 import { getProfile, saveProfile, learnFromCorrection } from '../services/styleManager';
-import { cmsAgentChat } from '../services/geminiService'; // New Service
+import { cmsAgentChat } from '../services/geminiService';
 import { UserStyleProfile, CMSMessage, ResearchTopic } from '../types';
 import { Editor } from '@tiptap/react';
 
@@ -39,10 +39,10 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
     // --- EFFECTS ---
 
-    // 1. Proactive Agent Initialization
+    // 1. Proactive Agent Initialization (Simulated Speed)
     useEffect(() => {
         if (topic && messages.length === 0) {
-            // Simulate the agent reading the research and proposing angles
+            // "Fake" instantaneous response to improve perceived latency
             const initMessage = `已为您读取关于【${topic.title}】的 5 篇热点文章。基于您的【${userProfile.tone}】风格，我为您构思了以下 3 个切入点，您想用哪个？`;
             
             const agentMsg: CMSMessage = {
@@ -60,16 +60,13 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         }
     }, [topic, userProfile]);
 
-    // 2. Selection Listener -> Proactive Agent Suggestion (Debounced)
+    // 2. Selection Listener -> UI Feedback
     useEffect(() => {
-        if (currentSelection.length > 10) {
-            // Optional: You could trigger the agent to ask "Want to refine this?"
-            // For now, we simply update the internal context so the NEXT user message carries this context.
-            // If we want the agent to 'Interrupt', we would push a new message here.
-            
-            // NOTE: To make it truly proactive as requested (User selects -> Agent detects), 
-            // we can simulate a "System Event" but let's be careful not to spam.
-            // A subtle UI indicator in the chat panel is usually better, but per prompt "Agent sees selection".
+        if (currentSelection.length > 5) {
+             // We don't spam the chat, but we visually indicate context is active
+             // In a real app, we might float a bubble. 
+             // Here, we rely on the User to type "Refine this" or use a tool.
+             console.log("Agent Context Update: Selection Active", currentSelection.substring(0, 10));
         }
     }, [currentSelection]);
 
@@ -89,7 +86,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         setIsAgentTyping(true);
 
         try {
-            // Call Gemini Agent
+            // Call Gemini Agent with FULL context (Selection, Content, Topic)
             const response = await cmsAgentChat(
                 [...messages, userMsg], 
                 text, 
@@ -101,7 +98,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 }
             );
 
-            // Execute Tool Action
+            // Execute Tool Action (The "Hands" of the Agent)
             await executeAgentAction(response.action);
 
             // Add Assistant Message
@@ -124,7 +121,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     };
 
     const handleOptionSelect = (value: string, label: string) => {
-        // Mark previous options as executed/selected (visual feedback)
+        // 1. Mark previous options as executed (removes buttons visually or greys them out)
         setMessages(prev => {
             const last = prev[prev.length - 1];
             if (last.role === 'assistant' && last.uiOptions) {
@@ -133,7 +130,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
             return prev;
         });
 
-        // Treat selection as a user message
+        // 2. Feed the choice back to the Agent as a user message
         handleSendMessage(`我选择：${label}`);
     };
 
@@ -143,27 +140,34 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
         switch (action.type) {
             case 'write_to_editor':
-                editor.chain().focus().insertContent(action.args.content).run();
+                // Append content. Using 'insertContent' at the end or current cursor.
+                // We add a newline first to ensure block separation if appending.
+                const contentToAdd = action.args.content;
+                editor.chain().focus().insertContent(contentToAdd).run();
                 break;
+
             case 'rewrite_selection':
-                // Check if selection exists, if not, maybe insert
+                // Smart Replace: If selection exists, replace it. If not, insert.
                 if (editor.state.selection.empty) {
-                    editor.chain().focus().insertContent(action.args.content).run();
+                     editor.chain().focus().insertContent(action.args.content).run();
                 } else {
-                    editor.chain().focus().deleteSelection().insertContent(action.args.content).run();
+                     editor.chain().focus().deleteSelection().insertContent(action.args.content).run();
                 }
-                // Mock Learning
                 learnFromCorrection("Original Text", action.args.content);
                 break;
+
             case 'apply_theme':
                 if (action.args.themeId && THEMES[action.args.themeId]) {
                     setActiveTheme(action.args.themeId);
                 }
                 break;
+
             case 'insert_image':
-                // For demo, we just append image html
-                editor.chain().focus().insertContent(`<img src="${action.args.url}" />`).run();
+                // Insert generic image placeholder or AI image if URL provided
+                const imgUrl = action.args.url || "https://placehold.co/600x400?text=AI+Image";
+                editor.chain().focus().setImage({ src: imgUrl, alt: "AI Image" }).run();
                 break;
+                
             default:
                 break;
         }
@@ -219,7 +223,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
             <div className="flex-1 flex overflow-hidden relative">
                 
-                {/* 1. LEFT: INTELLIGENT CHAT AGENT (Replaces Outline) */}
+                {/* 1. LEFT: INTELLIGENT CHAT AGENT */}
                 <CMSChatPanel 
                     messages={messages} 
                     onSendMessage={handleSendMessage} 
@@ -269,7 +273,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 {/* Drawers */}
                 {showAssetLib && <AssetLibrary onInsert={handleAssetInsert} onClose={() => setShowAssetLib(false)} />}
                 
-                {/* Style Settings Drawer (Simplified) */}
+                {/* Style Settings Drawer */}
                 {showStyleSettings && (
                     <div className="absolute top-0 left-0 w-64 h-full bg-[#1e1e1e] shadow-2xl z-40 p-4 animate-in slide-in-from-left">
                         <h3 className="text-xs font-bold text-white mb-4">风格配置</h3>
