@@ -3,8 +3,9 @@ import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PresentationState, Slide, ChatMessage, AgentMode, GlobalStyle, ProjectStage, ResearchTopic } from './types';
 import StageSidebar from './components/StageSidebar';
-import ProjectDashboard from './components/ProjectDashboard'; // NEW
+import ProjectDashboard from './components/ProjectDashboard';
 import ArticleEditor from './components/ArticleEditor';
+import PosterEditor from './components/PosterEditor'; // NEW
 import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
@@ -174,6 +175,15 @@ const App: React.FC = () => {
                 />
             );
         
+        case ProjectStage.POSTER: // NEW
+            return (
+                <PosterEditor 
+                    sourceMaterial={state.sourceMaterial}
+                    projectTitle={state.title}
+                    globalStyle={state.globalStyle}
+                />
+            );
+
         case ProjectStage.SCRIPT:
             // USE NEW ENGINE WRAPPER
             return (

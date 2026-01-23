@@ -131,27 +131,27 @@ const ProjectDashboard: React.FC<ProjectDashboardProps> = ({
                              </div>
                         </div>
 
-                        {/* RedBook / Poster Card (New Concept) */}
+                        {/* RedBook / Poster Card (UPDATED) */}
                         <div 
-                            className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-5 flex flex-col hover:border-pink-500/50 transition-all group relative overflow-hidden cursor-pointer h-48 opacity-60 hover:opacity-100"
-                            onClick={() => alert("小红书/海报生成模块 (Poster Engine) 即将上线。\n功能前瞻：\n1. AI 提取金句\n2. 竖屏排版引擎\n3. 一键生成封面图")}
+                            className="bg-[#1a1a1a] rounded-xl border border-gray-800 p-5 flex flex-col hover:border-pink-500/50 transition-all group relative overflow-hidden cursor-pointer h-48"
+                            onClick={() => onNavigate(ProjectStage.POSTER)}
                         >
                              <div className="flex justify-between items-start mb-4 relative z-10">
                                 <div className="w-10 h-10 rounded bg-pink-900/20 text-pink-400 flex items-center justify-center border border-pink-900/50">
                                     <i className="fa-solid fa-image-portrait"></i>
                                 </div>
-                                <span className="text-[10px] px-2 py-0.5 rounded-full border bg-gray-800 text-gray-500 border-gray-700">
-                                    即将上线
+                                <span className="text-[10px] px-2 py-0.5 rounded-full border bg-pink-900/20 text-pink-400 border-pink-900 animate-pulse">
+                                    NEW
                                 </span>
                              </div>
                              <h3 className="text-base font-bold text-gray-200 mb-1 relative z-10">小红书 / 海报</h3>
-                             <p className="text-xs text-gray-500 relative z-10 mb-4">3:4 竖屏金句卡片生成</p>
+                             <p className="text-xs text-gray-500 relative z-10 mb-4">金句卡片提取与生成</p>
                              
                              <div className="mt-auto relative z-10 flex justify-between items-end">
                                  <div className="text-[10px] text-gray-600 font-mono">
-                                     Waiting for Module...
+                                     3:4 Vertical Ratio
                                  </div>
-                                 <i className="fa-solid fa-lock text-gray-600"></i>
+                                 <i className="fa-solid fa-arrow-right text-gray-600 group-hover:text-pink-400 transform group-hover:translate-x-1 transition-all"></i>
                              </div>
                         </div>
                     </div>

@@ -11,6 +11,42 @@ const getAiClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// --- POSTER AGENT: EXTRACT QUOTES ---
+export const extractGoldenQuotes = async (articleText: string): Promise<string[]> => {
+    const ai = getAiClient();
+    const systemPrompt = `
+      Role: Social Media Copywriter (Xiaohongshu/Instagram Expert).
+      Task: Extract 6-8 "Golden Sentences" from the provided text.
+      Style: Short, punchy, insightful, high shareability. Avoid long paragraphs.
+      Output: JSON Array of strings.
+    `;
+    
+    // Fallback if text is empty
+    if (!articleText || articleText.length < 50) {
+        return ["暂无足够内容，请先在文案环节创作。", "这是第二条示例金句。", "点击 AI 提取按钮开始工作。"];
+    }
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `Article Content:\n${articleText.substring(0, 8000)}`,
+            config: {
+                systemInstruction: systemPrompt,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                }
+            }
+        });
+        
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        console.error("Failed to extract quotes", e);
+        return ["提取失败，请重试。", "AI 服务暂时不可用。"];
+    }
+};
+
 // --- CMS: INTELLIGENT AGENT (Chat & Tools) ---
 export const cmsAgentChat = async (
     history: CMSMessage[],

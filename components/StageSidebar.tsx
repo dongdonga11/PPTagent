@@ -15,6 +15,7 @@ const StageSidebar: React.FC<StageSidebarProps> = ({ currentStage, onSetStage })
         { type: 'sep' },
         { type: 'tool', id: ProjectStage.RESEARCH, icon: 'fa-solid fa-satellite-dish', label: '情报' },
         { type: 'tool', id: ProjectStage.STORY, icon: 'fa-solid fa-pen-nib', label: '文案' },
+        { type: 'tool', id: ProjectStage.POSTER, icon: 'fa-solid fa-image-portrait', label: '海报' },
         { type: 'tool', id: ProjectStage.SCRIPT, icon: 'fa-solid fa-clapperboard', label: '脚本' },
         { type: 'tool', id: ProjectStage.VISUAL, icon: 'fa-solid fa-palette', label: '视觉' },
         { type: 'tool', id: ProjectStage.EXPORT, icon: 'fa-solid fa-film', label: '合成' },
