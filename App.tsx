@@ -14,7 +14,7 @@ import ScriptEngine from './components/ScriptEngine';
 import PresentationRunner from './components/PresentationRunner';
 import VideoStage from './components/VideoStage'; 
 import ResearchPanel from './components/ResearchPanel'; 
-import GlobalSettingsModal from './components/GlobalSettingsModal'; // NEW
+import GlobalSettingsModal from './components/GlobalSettingsModal'; 
 import { generatePresentationOutline, generateSlideHtml, generateTheme } from './services/geminiService';
 import { calculateDuration } from './utils/scriptUtils';
 
@@ -42,7 +42,7 @@ const App: React.FC = () => {
   const [editorMode, setEditorMode] = useState<'code' | 'script' | 'none'>('none');
   const [mode, setMode] = useState<AgentMode>(AgentMode.IDLE);
   const [isPresenting, setIsPresenting] = useState(false);
-  const [showGlobalSettings, setShowGlobalSettings] = useState(false); // NEW STATE
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false); 
 
   const activeSlide = state.slides.find(s => s.id === activeSlideId) || null;
 
@@ -190,23 +190,48 @@ const App: React.FC = () => {
                     onUpdateSlide={handleSlideUpdate}
                     globalStyle={state.globalStyle}
                     onGenerateVisual={(id) => handleGenerateSlideVisual(id)}
-                />
-            );
-
-        case ProjectStage.EXPORT:
-            return (
-                <VideoStage 
-                    slides={state.slides}
-                    globalStyle={state.globalStyle}
-                    onSlideUpdate={handleSlideUpdate}
+                    
+                    // --- CRUD Handlers for Synthesis Board (VideoStage) ---
                     onAddSlide={() => {
                          const newSlide = { id: uuidv4(), title: 'New Scene', visual_intent: '...', visual_layout: 'Cover', narration: '', duration: 5, markers: [], content_html: '', isGenerated: false, isLoading: false, speaker_notes: '' } as Slide;
                          setState(prev => ({...prev, slides: [...prev.slides, newSlide]}));
                     }}
                     onDeleteSlide={(id) => setState(prev => ({...prev, slides: prev.slides.filter(s => s.id !== id)}))}
-                    onDuplicateSlide={(id) => { /* dup logic */ }}
-                    onMoveSlide={(id, dir) => { /* move logic */ }}
-                    onSplitSlide={(id, off) => { /* split logic */ }}
+                    onDuplicateSlide={(id) => {
+                        const slide = state.slides.find(s => s.id === id);
+                        if (slide) {
+                             const newSlide = { ...slide, id: uuidv4(), title: `${slide.title} (Copy)` };
+                             const idx = state.slides.findIndex(s => s.id === id);
+                             const newSlides = [...state.slides];
+                             newSlides.splice(idx + 1, 0, newSlide);
+                             setState(prev => ({...prev, slides: newSlides}));
+                        }
+                    }}
+                    onMoveSlide={(id, dir) => { 
+                        const idx = state.slides.findIndex(s => s.id === id);
+                        if (idx === -1) return;
+                        const newIdx = idx + dir;
+                        if (newIdx < 0 || newIdx >= state.slides.length) return;
+                        const newSlides = [...state.slides];
+                        [newSlides[idx], newSlides[newIdx]] = [newSlides[newIdx], newSlides[idx]];
+                        setState(prev => ({...prev, slides: newSlides}));
+                    }}
+                    onSplitSlide={(id, off) => { /* split logic placeholder */ }}
+                />
+            );
+
+        case ProjectStage.EXPORT:
+            // Keeping for backward compatibility or direct access, but essentially merged into SCRIPT
+            return (
+                <VideoStage 
+                    slides={state.slides}
+                    globalStyle={state.globalStyle}
+                    onSlideUpdate={handleSlideUpdate}
+                    onAddSlide={() => {}}
+                    onDeleteSlide={() => {}}
+                    onDuplicateSlide={() => {}}
+                    onMoveSlide={() => {}}
+                    onSplitSlide={() => {}}
                 />
             );
 

@@ -1,20 +1,28 @@
 
 import React, { useState } from 'react';
-import { Slide } from '../types';
+import { Slide, GlobalStyle } from '../types';
 import ScriptStoryboard from './ScriptStoryboard';
 import ScriptTableView from './ScriptTableView';
+import VideoStage from './VideoStage';
 
 interface ScriptEngineProps {
     slides: Slide[];
     activeSlideId: string | null;
     onSelect: (id: string) => void;
     onUpdateSlide: (id: string, updates: Partial<Slide>) => void;
-    globalStyle: any;
+    globalStyle: GlobalStyle;
     onGenerateVisual: (id: string) => void;
+    
+    // Extended CRUD for Video Stage
+    onAddSlide: () => void;
+    onDeleteSlide: (id: string) => void;
+    onDuplicateSlide: (id: string) => void;
+    onMoveSlide: (id: string, direction: number) => void;
+    onSplitSlide: (id: string, splitOffset: number) => void;
 }
 
 const ScriptEngine: React.FC<ScriptEngineProps> = (props) => {
-    const [viewMode, setViewMode] = useState<'table' | 'storyboard'>('table');
+    const [viewMode, setViewMode] = useState<'table' | 'storyboard' | 'video'>('table');
 
     // Helper to switch to storyboard and select a slide
     const handleSwitchToStoryboard = (slideId: string) => {
@@ -37,13 +45,19 @@ const ScriptEngine: React.FC<ScriptEngineProps> = (props) => {
                             onClick={() => setViewMode('table')}
                             className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${viewMode === 'table' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
                         >
-                            <i className="fa-solid fa-table"></i> 列表视图 (List)
+                            <i className="fa-solid fa-table"></i> 脚本板 (Table)
                         </button>
                         <button 
                             onClick={() => setViewMode('storyboard')}
                             className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${viewMode === 'storyboard' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
                         >
                             <i className="fa-solid fa-layer-group"></i> 故事板 (Board)
+                        </button>
+                         <button 
+                            onClick={() => setViewMode('video')}
+                            className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-2 transition-all ${viewMode === 'video' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                        >
+                            <i className="fa-solid fa-film"></i> 合成板 (Timeline)
                         </button>
                     </div>
                 </div>
@@ -60,13 +74,36 @@ const ScriptEngine: React.FC<ScriptEngineProps> = (props) => {
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden relative">
-                {viewMode === 'table' ? (
+                {viewMode === 'table' && (
                     <ScriptTableView 
-                        {...props} 
+                        slides={props.slides}
+                        globalStyle={props.globalStyle}
+                        onUpdateSlide={props.onUpdateSlide}
+                        onGenerateVisual={props.onGenerateVisual}
                         onSelectSlide={handleSwitchToStoryboard}
                     />
-                ) : (
-                    <ScriptStoryboard {...props} />
+                )}
+                {viewMode === 'storyboard' && (
+                    <ScriptStoryboard 
+                        slides={props.slides}
+                        activeSlideId={props.activeSlideId}
+                        onSelect={props.onSelect}
+                        onUpdateSlide={props.onUpdateSlide}
+                        globalStyle={props.globalStyle}
+                        onGenerateVisual={props.onGenerateVisual}
+                    />
+                )}
+                {viewMode === 'video' && (
+                    <VideoStage 
+                        slides={props.slides}
+                        globalStyle={props.globalStyle}
+                        onSlideUpdate={props.onUpdateSlide}
+                        onAddSlide={props.onAddSlide}
+                        onDeleteSlide={props.onDeleteSlide}
+                        onDuplicateSlide={props.onDuplicateSlide}
+                        onMoveSlide={props.onMoveSlide}
+                        onSplitSlide={props.onSplitSlide}
+                    />
                 )}
             </div>
         </div>

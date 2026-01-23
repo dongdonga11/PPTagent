@@ -19,7 +19,7 @@ const StageSidebar: React.FC<StageSidebarProps> = ({ currentStage, onSetStage, o
         { type: 'tool', id: ProjectStage.POSTER, icon: 'fa-solid fa-image-portrait', label: '海报' },
         { type: 'tool', id: ProjectStage.SCRIPT, icon: 'fa-solid fa-clapperboard', label: '脚本' },
         { type: 'tool', id: ProjectStage.VISUAL, icon: 'fa-solid fa-palette', label: '视觉' },
-        { type: 'tool', id: ProjectStage.EXPORT, icon: 'fa-solid fa-film', label: '合成' },
+        // EXPORT merged into SCRIPT, removed from sidebar
     ];
 
     return (

@@ -28,6 +28,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     // UI Toggles
     const [showAssetLib, setShowAssetLib] = useState(false);
     const [isSyncingGithub, setIsSyncingGithub] = useState(false);
+    const [isSaving, setIsSaving] = useState(false); // Local Save State
     
     // Agent State
     const [messages, setMessages] = useState<CMSMessage[]>([]);
@@ -76,6 +77,22 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     }, [content, title, activeTheme]);
 
     // --- ACTIONS ---
+
+    const handleLocalSave = () => {
+        setIsSaving(true);
+        // Simulate save delay and actual local storage persistence
+        setTimeout(() => {
+            try {
+                localStorage.setItem('draft_title', title);
+                localStorage.setItem('draft_content', content);
+                localStorage.setItem('draft_timestamp', Date.now().toString());
+                setIsSaving(false);
+            } catch (e) {
+                console.error("Local save failed");
+                setIsSaving(false);
+            }
+        }, 600);
+    };
 
     const handleGitHubSync = async () => {
         // Reload profile to get latest settings
@@ -246,6 +263,21 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                         <i className="fa-solid fa-images mr-1"></i> 素材库
                     </button>
                     
+                    {/* SAVE BUTTON (LOCAL) */}
+                    <button 
+                        onClick={handleLocalSave}
+                        disabled={isSaving}
+                        className={`text-xs mr-2 flex items-center gap-2 px-3 py-1.5 rounded transition-all border border-gray-700
+                            ${isSaving 
+                                ? 'bg-gray-800 text-green-400 cursor-wait' 
+                                : 'hover:bg-gray-800 hover:text-white text-gray-300'
+                            }`}
+                        title="保存草稿 (Local Save)"
+                    >
+                         {isSaving ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-regular fa-floppy-disk"></i>}
+                         <span>{isSaving ? '已保存' : '保存'}</span>
+                    </button>
+
                     {/* GITHUB SYNC */}
                     <button 
                         onClick={handleGitHubSync}
@@ -255,7 +287,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                                 ? 'bg-gray-800 text-gray-400 cursor-wait' 
                                 : 'hover:bg-gray-800 hover:text-white text-gray-300'
                             }`}
-                        title={userProfile.githubConfig?.token ? "Sync to GitHub" : "请先在全局设置配置 GitHub"}
+                        title={userProfile.githubConfig?.token ? "Push to GitHub" : "请先在全局设置配置 GitHub"}
                     >
                          {isSyncingGithub ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-brands fa-github"></i>}
                     </button>
