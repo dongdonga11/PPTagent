@@ -38,12 +38,37 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }
 
     // --- EFFECTS ---
 
-    // Preview Update
+    // 1. Preview Update
     useEffect(() => {
         const rawHtml = `<h1>${title}</h1>${content}`;
         const styled = transformToWechatHtml(rawHtml, activeTheme);
         setPreviewHtml(styled);
     }, [content, title, activeTheme]);
+
+    // 2. AUTO-KICKSTART AGENT (Restoring the flow!)
+    useEffect(() => {
+        // If this is a fresh entry (no messages) and it looks like a Hotspot topic
+        if (messages.length === 0 && article) {
+            const isHotspot = article.tags.includes('Hotspot');
+            const isDraft = article.tags.includes('Draft');
+
+            if (isHotspot || (isDraft && article.content.length < 200)) {
+                // Simulate Agent Proactivity
+                const initialMsg: CMSMessage = {
+                    id: uuidv4(),
+                    role: 'assistant',
+                    content: `👋 您好！我是 SpaceCoding 写作助手。\n\n已为您锁定选题：「${article.title}」。\n我们需要怎么开始？`,
+                    timestamp: Date.now(),
+                    uiOptions: [
+                        { label: '生成大纲 (Outline)', value: '生成大纲', style: '' },
+                        { label: '直接写开头 (Intro)', value: '写一个吸引人的开头', style: '' },
+                        { label: '分析爆款角度', value: '分析这个话题的爆款角度', style: '' }
+                    ]
+                };
+                setMessages([initialMsg]);
+            }
+        }
+    }, [article]); // Run once when article loads
 
     // --- AGENT LOGIC ---
 
@@ -57,7 +82,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }
                 [...messages, userMsg], 
                 text, 
                 { 
-                    topic: null, 
+                    topic: article ? { id: article.id, title: title, coreViewpoint: article.plainText, hotScore: 0 } : null, 
                     profile: userProfile, 
                     currentSelection: currentSelection,
                     articleContent: content
@@ -85,6 +110,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }
     };
 
     const handleOptionSelect = (value: string, label: string) => {
+        // Mark previous options as selected (visual feedback)
         setMessages(prev => {
             const last = prev[prev.length - 1];
             if (last.role === 'assistant' && last.uiOptions) {
@@ -92,7 +118,9 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }
             }
             return prev;
         });
-        handleSendMessage(`我选择：${label}`);
+        
+        // Send the selection as a user message to trigger the Agent
+        handleSendMessage(value);
     };
 
     const executeAgentAction = async (action: { type: string, args: any }) => {
@@ -101,6 +129,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }
 
         switch (action.type) {
             case 'write_to_editor':
+                // Append content with a nice fade-in effect via TipTap if possible, for now direct insert
                 editor.chain().focus().insertContent(action.args.content).run();
                 break;
 
@@ -123,7 +152,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }
                 if (action.args.url) {
                      editor.chain().focus().setImage({ src: action.args.url, alt: 'AI Image' }).run();
                 } else if (action.args.prompt) {
-                     setMessages(prev => [...prev, { id: uuidv4(), role: 'system', content: `正在生成配图: ${action.args.prompt}...`, timestamp: Date.now() }]);
+                     setMessages(prev => [...prev, { id: uuidv4(), role: 'system', content: `🎨 正在绘制: ${action.args.prompt}...`, timestamp: Date.now() }]);
                      try {
                          const imgData = await generateAiImage(action.args.prompt);
                          if (imgData) {
