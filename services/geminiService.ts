@@ -41,48 +41,39 @@ export const cmsAgentChat = async (
       --- AGENT BEHAVIOR RULES (STATE MACHINE) ---
       
       1. PHASE: IDEATION (Start)
-         - If user picks an Angle (e.g., "Story Mode"), DO NOT just say "Ok".
-         - ACTION: Immediately propose an Outline OR Start Writing. 
-         - Use 'ask_user_choice' to confirm: "Generate Outline" vs "Start Writing Directly".
+         - If user picks an Angle, immediately propose an Outline OR Start Writing.
+         - Use 'ask_user_choice'.
       
       2. PHASE: WRITING (Autonomous)
-         - If user says "Start" or "Continue" or confirms outline:
-         - ACTION: Use 'write_to_editor' to write the NEXT logical section (e.g., Intro + First H2).
-         - CRITICAL: Do NOT ask "Shall I continue?" after every sentence. Write substantial blocks (300-500 words).
-         - Style: Use HTML (<h2>, <p>, <blockquote>, <ul>). Match user tone.
+         - If user says "Start", write the NEXT logical section using 'write_to_editor'.
+         - Write substantial blocks.
       
       3. PHASE: REFINING (Selection Active)
-         - Trigger: User has SELECTED text: "${context.currentSelection?.substring(0, 20)}...".
-         - If user input is vague (e.g., "Fix this"), infer intent -> 'rewrite_selection'.
-         - If user input is specific (e.g., "Make it a quote"), -> 'rewrite_selection' with <blockquote>.
+         - If user selects text and asks for changes, use 'rewrite_selection'.
       
-      4. PHASE: STYLING
-         - If user mentions "Colors", "Theme", "Layout":
-         - ACTION: Use 'ask_user_choice' with 'style' property for color swatches.
-         - OR 'apply_theme' if they specificy a name.
+      4. PHASE: ASSETS & STYLING
+         - **IMAGE GENERATION**: 
+           - If user inputs specific command "/image [description]" OR asks "Generate an image of X":
+           - ACTION: Use 'insert_image' tool.
+           - ARGUMENT: Set 'prompt' to the English description of the image.
+         - **THEME**: 
+           - If user mentions colors/theme, use 'apply_theme' or 'ask_user_choice'.
       
       --- TOOLS (JSON OUTPUT) ---
       
-      1. "write_to_editor": Append content to the end (or insert at cursor if no selection).
-         Args: { content: "<html>..." }
-      
-      2. "rewrite_selection": REPLACE the currently selected text.
-         Args: { content: "<html>..." }
-      
-      3. "ask_user_choice": Force user to pick a path.
-         Args: { options: [{ label: "Story Mode", value: "story" }, { label: "Data Mode", value: "data" }] }
-         
-      4. "apply_theme":
-         Args: { themeId: "kaoxing" | "tech" | "default" }
-      
-      5. "none": Pure text reply.
+      1. "write_to_editor": Append content. Args: { content: "<html>..." }
+      2. "rewrite_selection": Replace selection. Args: { content: "<html>..." }
+      3. "insert_image": Generate and insert AI image. Args: { prompt: "english description...", url: null }
+      4. "apply_theme": Args: { themeId: "..." }
+      5. "ask_user_choice": Args: { options: [{ label, value, style }] }
+      6. "none": Text reply.
       
       --- OUTPUT FORMAT ---
       Return JSON ONLY.
       {
-        "thought": "User selected text, asking for refinement...",
-        "reply": "I've polished this paragraph to be more punchy.",
-        "action": { "type": "rewrite_selection", "args": { "content": "..." } }
+        "thought": "User wants an image of a cat...",
+        "reply": "Generating an image of a cute cat for you...",
+        "action": { "type": "insert_image", "args": { "prompt": "a cute cat sitting on a keyboard, cyberpunk style" } }
       }
     `;
 
@@ -97,7 +88,7 @@ export const cmsAgentChat = async (
             config: {
                 systemInstruction: systemPrompt,
                 responseMimeType: "application/json",
-                // Strict Schema Definition to avoid 400 Errors
+                // Strict Schema Definition
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
@@ -108,13 +99,14 @@ export const cmsAgentChat = async (
                             properties: {
                                 type: { 
                                     type: Type.STRING, 
-                                    enum: ['write_to_editor', 'rewrite_selection', 'apply_theme', 'ask_user_choice', 'none'] 
+                                    enum: ['write_to_editor', 'rewrite_selection', 'insert_image', 'apply_theme', 'ask_user_choice', 'none'] 
                                 },
                                 args: { 
                                     type: Type.OBJECT,
-                                    // Union of all possible args for flexibility
                                     properties: {
                                         content: { type: Type.STRING },
+                                        prompt: { type: Type.STRING }, // For image generation
+                                        url: { type: Type.STRING },
                                         themeId: { type: Type.STRING },
                                         options: {
                                             type: Type.ARRAY,
@@ -123,7 +115,7 @@ export const cmsAgentChat = async (
                                                 properties: {
                                                     label: { type: Type.STRING },
                                                     value: { type: Type.STRING },
-                                                    style: { type: Type.STRING } // For color hex
+                                                    style: { type: Type.STRING }
                                                 }
                                             }
                                         }
@@ -151,7 +143,7 @@ export const cmsAgentChat = async (
     }
 };
 
-// --- EXISTING CMS FUNCTIONS (Kept for compatibility) ---
+// --- EXISTING CMS FUNCTIONS ---
 
 export const performResearchAndIdeation = async (keyword: string, fileContent: string = ''): Promise<ResearchTopic[]> => {
     const ai = getAiClient();

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useEditor, EditorContent, BubbleMenu, FloatingMenu, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Image from '@tiptap/extension-image';
 import { refineTextWithAI } from '../services/geminiService';
 
 interface TiptapEditorProps {
@@ -18,8 +19,15 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({ content, onChange, onEditor
     const editor = useEditor({
         extensions: [
             StarterKit,
+            Image.configure({
+                inline: false,
+                allowBase64: true,
+                HTMLAttributes: {
+                    class: 'article-image',
+                },
+            }),
             Placeholder.configure({
-                placeholder: "输入 '/' 唤起 AI 助手，或在左侧聊天框输入指令...",
+                placeholder: "输入 '/' 唤起 AI 助手，或在左侧聊天框输入 '/image' 生成配图...",
             }),
         ],
         content: content,
@@ -76,12 +84,12 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({ content, onChange, onEditor
                 tippyOptions={{ duration: 100, placement: 'top' }}
                 className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col min-w-[200px] z-50"
             >
-                {/* Simplified Bubble Menu as we are moving logic to Chat */}
+                {/* Simplified Bubble Menu */}
                 <div className="p-1 flex flex-col gap-0.5">
                     <button onClick={() => handleAiCommand('polish', '润色这段文字')} className="menu-item">
                         <i className="fa-solid fa-pen-fancy text-xs text-blue-400 w-4"></i> 快速润色
                     </button>
-                    <div className="text-[10px] text-gray-500 px-3 py-1">Tip: 可在左侧对话框告诉 Agent 更多需求</div>
+                    <div className="text-[10px] text-gray-500 px-3 py-1">Tip: 可在左侧对话框输入 "/image" 生成配图</div>
                 </div>
             </BubbleMenu>
 

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -40,6 +41,19 @@
         height: 0;
         pointer-events: none;
       }
+      /* Editor Image Styles */
+      .ProseMirror img {
+        border-radius: 8px;
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 1.5rem auto;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        transition: transform 0.2s;
+      }
+      .ProseMirror img.ProseMirror-selectednode {
+        outline: 3px solid #3b82f6;
+      }
     </style>
   <script type="importmap">
 {
@@ -55,6 +69,7 @@
     "@tiptap/core": "https://esm.sh/@tiptap/core@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
     "@tiptap/starter-kit": "https://esm.sh/@tiptap/starter-kit@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
     "@tiptap/extension-placeholder": "https://esm.sh/@tiptap/extension-placeholder@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
+    "@tiptap/extension-image": "https://esm.sh/@tiptap/extension-image@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
     "@tiptap/extension-bubble-menu": "https://esm.sh/@tiptap/extension-bubble-menu@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
     "@tiptap/extension-floating-menu": "https://esm.sh/@tiptap/extension-floating-menu@2.6.6?deps=react@18.2.0,react-dom@18.2.0",
     "@tiptap/react": "https://esm.sh/@tiptap/react@2.6.6?deps=react@18.2.0,react-dom@18.2.0",

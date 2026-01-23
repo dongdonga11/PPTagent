@@ -6,7 +6,7 @@ import { transformToWechatHtml, THEMES } from '../utils/wechatStyleEngine';
 import AssetLibrary from './AssetLibrary';
 import CMSChatPanel from './CMSChatPanel';
 import { getProfile, saveProfile, learnFromCorrection } from '../services/styleManager';
-import { cmsAgentChat } from '../services/geminiService';
+import { cmsAgentChat, generateAiImage } from '../services/geminiService';
 import { UserStyleProfile, CMSMessage, ResearchTopic } from '../types';
 import { Editor } from '@tiptap/react';
 
@@ -39,12 +39,10 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
     // --- EFFECTS ---
 
-    // 1. Proactive Agent Initialization (Simulated Speed)
+    // 1. Proactive Agent Initialization
     useEffect(() => {
         if (topic && messages.length === 0) {
-            // "Fake" instantaneous response to improve perceived latency
             const initMessage = `已为您读取关于【${topic.title}】的 5 篇热点文章。基于您的【${userProfile.tone}】风格，我为您构思了以下 3 个切入点，您想用哪个？`;
-            
             const agentMsg: CMSMessage = {
                 id: uuidv4(),
                 role: 'assistant',
@@ -63,9 +61,6 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     // 2. Selection Listener -> UI Feedback
     useEffect(() => {
         if (currentSelection.length > 5) {
-             // We don't spam the chat, but we visually indicate context is active
-             // In a real app, we might float a bubble. 
-             // Here, we rely on the User to type "Refine this" or use a tool.
              console.log("Agent Context Update: Selection Active", currentSelection.substring(0, 10));
         }
     }, [currentSelection]);
@@ -80,13 +75,11 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     // --- AGENT LOGIC ---
 
     const handleSendMessage = async (text: string) => {
-        // Add User Message
         const userMsg: CMSMessage = { id: uuidv4(), role: 'user', content: text, timestamp: Date.now() };
         setMessages(prev => [...prev, userMsg]);
         setIsAgentTyping(true);
 
         try {
-            // Call Gemini Agent with FULL context (Selection, Content, Topic)
             const response = await cmsAgentChat(
                 [...messages, userMsg], 
                 text, 
@@ -98,16 +91,14 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 }
             );
 
-            // Execute Tool Action (The "Hands" of the Agent)
+            // Execute Tool Action
             await executeAgentAction(response.action);
 
-            // Add Assistant Message
             const aiMsg: CMSMessage = { 
                 id: uuidv4(), 
                 role: 'assistant', 
                 content: response.reply, 
                 timestamp: Date.now(),
-                // If action was ask_user_choice, populate uiOptions
                 uiOptions: response.action.type === 'ask_user_choice' ? response.action.args.options : undefined
             };
             setMessages(prev => [...prev, aiMsg]);
@@ -121,7 +112,6 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
     };
 
     const handleOptionSelect = (value: string, label: string) => {
-        // 1. Mark previous options as executed (removes buttons visually or greys them out)
         setMessages(prev => {
             const last = prev[prev.length - 1];
             if (last.role === 'assistant' && last.uiOptions) {
@@ -129,8 +119,6 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
             }
             return prev;
         });
-
-        // 2. Feed the choice back to the Agent as a user message
         handleSendMessage(`我选择：${label}`);
     };
 
@@ -140,14 +128,10 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
         switch (action.type) {
             case 'write_to_editor':
-                // Append content. Using 'insertContent' at the end or current cursor.
-                // We add a newline first to ensure block separation if appending.
-                const contentToAdd = action.args.content;
-                editor.chain().focus().insertContent(contentToAdd).run();
+                editor.chain().focus().insertContent(action.args.content).run();
                 break;
 
             case 'rewrite_selection':
-                // Smart Replace: If selection exists, replace it. If not, insert.
                 if (editor.state.selection.empty) {
                      editor.chain().focus().insertContent(action.args.content).run();
                 } else {
@@ -163,9 +147,26 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 break;
 
             case 'insert_image':
-                // Insert generic image placeholder or AI image if URL provided
-                const imgUrl = action.args.url || "https://placehold.co/600x400?text=AI+Image";
-                editor.chain().focus().setImage({ src: imgUrl, alt: "AI Image" }).run();
+                // Logic:
+                // 1. If URL is provided (rare), use it.
+                // 2. If prompt is provided (common), generate image then insert.
+                if (action.args.url) {
+                     editor.chain().focus().setImage({ src: action.args.url, alt: 'AI Image' }).run();
+                } else if (action.args.prompt) {
+                     // Add a system message saying we are generating
+                     setMessages(prev => [...prev, { id: uuidv4(), role: 'system', content: `正在生成配图: ${action.args.prompt}...`, timestamp: Date.now() }]);
+                     try {
+                         const imgData = await generateAiImage(action.args.prompt);
+                         if (imgData) {
+                             editor.chain().focus().setImage({ src: imgData, alt: action.args.prompt }).run();
+                         } else {
+                             // Fallback
+                             editor.chain().focus().insertContent(`<blockquote>[图片生成失败] Prompt: ${action.args.prompt}</blockquote>`).run();
+                         }
+                     } catch (e) {
+                         console.error(e);
+                     }
+                }
                 break;
                 
             default:
@@ -190,7 +191,8 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
         if(editorRef.current) {
             editorRef.current.chain().focus().setImage({ src: url, alt }).run();
         }
-        setShowAssetLib(false);
+        // Don't auto close, user might want to insert multiple
+        // setShowAssetLib(false); 
     };
 
     return (
@@ -211,7 +213,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                     <button onClick={() => setShowStyleSettings(!showStyleSettings)} className="text-xs text-gray-400 hover:text-white mr-2">
                         <i className="fa-solid fa-user-gear mr-1"></i> 风格
                     </button>
-                    <button onClick={() => setShowAssetLib(!showAssetLib)} className="text-xs text-gray-400 hover:text-white mr-2">
+                    <button onClick={() => setShowAssetLib(!showAssetLib)} className={`text-xs mr-2 transition-colors ${showAssetLib ? 'text-blue-400 font-bold' : 'text-gray-400 hover:text-white'}`}>
                         <i className="fa-solid fa-images mr-1"></i> 素材库
                     </button>
                     <button onClick={onGenerateScript} className="text-xs text-gray-400 hover:text-white mr-4" title="转为视频脚本"><i className="fa-solid fa-film mr-1"></i> 转脚本</button>

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { generateAiImage } from '../services/geminiService';
 
@@ -8,10 +9,12 @@ interface AssetLibraryProps {
 
 // Simulated "Public" folder assets
 const MOCK_LOCAL_ASSETS = [
-    { id: 'l1', url: 'https://images.unsplash.com/photo-1531297461136-82ae96c5b0a4?auto=format&fit=crop&w=500&q=60', tag: 'Tech' },
-    { id: 'l2', url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=500&q=60', tag: 'Office' },
-    { id: 'l3', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=500&q=60', tag: 'Team' },
-    { id: 'l4', url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=500&q=60', tag: 'Cyber' },
+    { id: 'l1', url: 'https://images.unsplash.com/photo-1531297461136-82ae96c5b0a4?auto=format&fit=crop&w=600&q=80', tag: 'Tech' },
+    { id: 'l2', url: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=600&q=80', tag: 'Office' },
+    { id: 'l3', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80', tag: 'Team' },
+    { id: 'l4', url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=600&q=80', tag: 'Cyber' },
+    { id: 'l5', url: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=600&q=80', tag: 'Work' },
+    { id: 'l6', url: 'https://images.unsplash.com/photo-1664575602554-2087b04935a5?auto=format&fit=crop&w=600&q=80', tag: 'Woman' },
 ];
 
 const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
@@ -37,79 +40,136 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ onInsert, onClose }) => {
         }
     };
 
+    // Allow dragging images into Tiptap
+    const handleDragStart = (e: React.DragEvent, url: string) => {
+        // Simple text/html drag usually works for Tiptap
+        const html = `<img src="${url}" alt="Dropped Image" />`;
+        e.dataTransfer.setData('text/html', html);
+        e.dataTransfer.setData('text/plain', url);
+    };
+
     return (
-        <div className="fixed inset-y-0 right-0 w-80 bg-[#1a1a1a] border-l border-gray-800 shadow-2xl z-50 flex flex-col transform transition-transform duration-300">
-            <div className="h-14 flex items-center justify-between px-4 border-b border-gray-800 bg-[#111]">
-                <h3 className="text-sm font-bold text-gray-200">素材库 (Assets)</h3>
-                <button onClick={onClose} className="text-gray-500 hover:text-white">
+        <div className="fixed inset-y-0 right-0 w-80 bg-[#141414] border-l border-gray-800 shadow-2xl z-50 flex flex-col transform transition-transform duration-300 animate-in slide-in-from-right">
+            {/* Header */}
+            <div className="h-14 flex items-center justify-between px-4 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
+                <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-photo-film text-blue-500"></i>
+                    <h3 className="text-sm font-bold text-gray-200">素材库 (Assets)</h3>
+                </div>
+                <button onClick={onClose} className="w-6 h-6 rounded flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-800 transition-colors">
                     <i className="fa-solid fa-xmark"></i>
                 </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-gray-800">
+            <div className="flex border-b border-gray-800 bg-[#111] shrink-0">
                 <button 
                     onClick={() => setActiveTab('local')}
-                    className={`flex-1 py-3 text-xs font-bold ${activeTab === 'local' ? 'text-blue-400 border-b-2 border-blue-400' : 'text-gray-500 hover:text-gray-300'}`}
+                    className={`flex-1 py-3 text-xs font-bold transition-all border-b-2
+                        ${activeTab === 'local' ? 'text-blue-400 border-blue-400 bg-blue-900/10' : 'text-gray-500 border-transparent hover:text-gray-300'}
+                    `}
                 >
-                    <i className="fa-regular fa-folder-open mr-2"></i>本地 (Public)
+                    <i className="fa-regular fa-images mr-2"></i>本地素材
                 </button>
                 <button 
                     onClick={() => setActiveTab('ai')}
-                    className={`flex-1 py-3 text-xs font-bold ${activeTab === 'ai' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
+                    className={`flex-1 py-3 text-xs font-bold transition-all border-b-2
+                        ${activeTab === 'ai' ? 'text-purple-400 border-purple-400 bg-purple-900/10' : 'text-gray-500 border-transparent hover:text-gray-300'}
+                    `}
                 >
                     <i className="fa-solid fa-wand-magic-sparkles mr-2"></i>AI 绘图
                 </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                {activeTab === 'local' ? (
-                    <div className="grid grid-cols-2 gap-3">
-                        {MOCK_LOCAL_ASSETS.map((asset) => (
-                            <div 
-                                key={asset.id} 
-                                className="relative group cursor-pointer aspect-square rounded overflow-hidden border border-gray-800"
-                                onClick={() => onInsert(asset.url, asset.tag)}
-                            >
-                                <img src={asset.url} alt={asset.tag} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                                <span className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white px-1 rounded">{asset.tag}</span>
-                            </div>
-                        ))}
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-[#111]">
+                
+                {/* --- LOCAL ASSETS --- */}
+                {activeTab === 'local' && (
+                    <div className="space-y-4">
+                        <div className="text-[10px] text-gray-500 uppercase font-bold flex justify-between">
+                             <span>Public Folder</span>
+                             <span className="text-gray-600">Drag or Click</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {MOCK_LOCAL_ASSETS.map((asset) => (
+                                <div 
+                                    key={asset.id} 
+                                    className="relative group cursor-grab active:cursor-grabbing aspect-video rounded-lg overflow-hidden border border-gray-800 hover:border-blue-500 transition-all shadow-sm hover:shadow-lg hover:scale-[1.02]"
+                                    onClick={() => onInsert(asset.url, asset.tag)}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, asset.url)}
+                                >
+                                    <img src={asset.url} alt={asset.tag} className="w-full h-full object-cover" />
+                                    {/* Hover Overlay */}
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <i className="fa-solid fa-plus text-white text-lg"></i>
+                                    </div>
+                                    <span className="absolute bottom-1 left-1 text-[9px] bg-black/80 backdrop-blur text-gray-200 px-1.5 py-0.5 rounded border border-white/10">
+                                        {asset.tag}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                ) : (
-                    <div className="flex flex-col gap-4">
-                        <div className="bg-[#222] p-3 rounded border border-gray-700">
-                            <label className="text-xs text-purple-400 font-bold mb-2 block">AI 生图 Prompt</label>
+                )}
+
+                {/* --- AI GENERATION --- */}
+                {activeTab === 'ai' && (
+                    <div className="flex flex-col gap-4 h-full">
+                         <div className="bg-gradient-to-br from-[#1e1e1e] to-[#141414] p-4 rounded-xl border border-gray-800 shadow-lg">
+                            <label className="text-xs text-purple-400 font-bold mb-2 block flex items-center gap-2">
+                                <i className="fa-solid fa-robot"></i> 描述画面 (Prompt)
+                            </label>
                             <textarea 
                                 value={aiPrompt}
                                 onChange={(e) => setAiPrompt(e.target.value)}
-                                placeholder="描述画面，例如：未来教室..."
-                                className="w-full bg-[#111] text-gray-300 text-xs p-2 rounded border border-gray-600 focus:outline-none min-h-[80px]"
+                                placeholder="例如：一张赛博朋克风格的办公室，霓虹灯光，未来感..."
+                                className="w-full bg-black/50 text-gray-200 text-xs p-3 rounded-lg border border-gray-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 min-h-[100px] mb-3 resize-none"
                             />
                             <button 
                                 onClick={handleGenerate}
                                 disabled={isGenerating || !aiPrompt}
-                                className="w-full mt-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold py-2 rounded flex items-center justify-center gap-2"
+                                className={`w-full text-xs font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all
+                                    ${isGenerating || !aiPrompt
+                                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
+                                        : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg hover:shadow-purple-500/20'}
+                                `}
                             >
                                 {isGenerating ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-palette"></i>}
-                                开始生成
+                                {isGenerating ? '正在绘制...' : '开始生成 (Generate)'}
                             </button>
                         </div>
 
-                        {generatedImages.length > 0 && (
-                            <div className="grid grid-cols-2 gap-3 mt-2">
-                                {generatedImages.map((url, idx) => (
-                                    <div 
-                                        key={idx} 
-                                        className="relative group cursor-pointer aspect-square rounded overflow-hidden border border-purple-500/30"
-                                        onClick={() => onInsert(url, 'AI Generated')}
-                                    >
-                                        <img src={url} alt="AI" className="w-full h-full object-cover" />
-                                        <div className="absolute top-1 right-1 bg-purple-600 text-white text-[9px] px-1.5 rounded-full">AI</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <div className="flex-1">
+                            <h4 className="text-[10px] text-gray-500 uppercase font-bold mb-3">生成记录 (History)</h4>
+                            {generatedImages.length === 0 ? (
+                                <div className="text-center text-gray-600 mt-10 p-4 border border-dashed border-gray-800 rounded-lg">
+                                    <i className="fa-solid fa-image text-3xl mb-2 opacity-20"></i>
+                                    <p className="text-xs">暂无生成的图片</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-4">
+                                    {generatedImages.map((url, idx) => (
+                                        <div 
+                                            key={idx} 
+                                            className="relative group cursor-pointer rounded-lg overflow-hidden border border-purple-900/50 shadow-md animate-in fade-in zoom-in duration-300"
+                                            onClick={() => onInsert(url, 'AI Generated')}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, url)}
+                                        >
+                                            <img src={url} alt="AI" className="w-full h-auto object-cover" />
+                                            <div className="absolute top-2 right-2 bg-purple-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold shadow-lg">AI</div>
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <div className="bg-black/60 px-3 py-1 rounded-full text-xs text-white backdrop-blur">
+                                                    点击插入
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
