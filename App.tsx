@@ -8,7 +8,7 @@ import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
 import CodeEditor from './components/CodeEditor';
-import ScriptStoryboard from './components/ScriptStoryboard';
+import ScriptEngine from './components/ScriptEngine'; // Updated Import
 import PresentationRunner from './components/PresentationRunner';
 import VideoStage from './components/VideoStage'; 
 import ResearchPanel from './components/ResearchPanel'; 
@@ -163,8 +163,9 @@ const App: React.FC = () => {
             );
         
         case ProjectStage.SCRIPT:
+            // USE NEW ENGINE WRAPPER
             return (
-                <ScriptStoryboard 
+                <ScriptEngine 
                     slides={state.slides}
                     activeSlideId={activeSlideId}
                     onSelect={setActiveSlideId}
