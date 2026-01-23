@@ -7,20 +7,19 @@ import AssetLibrary from './AssetLibrary';
 import CMSChatPanel from './CMSChatPanel';
 import { getProfile, saveProfile, learnFromCorrection } from '../services/styleManager';
 import { cmsAgentChat, generateAiImage } from '../services/geminiService';
-import { UserStyleProfile, CMSMessage, ResearchTopic } from '../types';
+import { UserStyleProfile, CMSMessage, Article } from '../types';
 import { Editor } from '@tiptap/react';
 
 interface ArticleEditorProps {
-    content: string;
-    onChange: (text: string) => void;
-    onGenerateScript: () => void;
-    isProcessing: boolean;
-    topic?: ResearchTopic; // Full topic object
+    article?: Article; // Optional existing article
+    onSave: (title: string, content: string, plainText: string) => void;
+    onBack: () => void;
 }
 
-const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGenerateScript, isProcessing, topic }) => {
+const ArticleEditor: React.FC<ArticleEditorProps> = ({ article, onSave, onBack }) => {
     // --- STATE ---
-    const [title, setTitle] = useState(topic?.title || "未命名创作");
+    const [title, setTitle] = useState(article?.title || "未命名创作");
+    const [content, setContent] = useState(article?.content || "<p>开始您的创作...</p>");
     const [activeTheme, setActiveTheme] = useState('kaoxing'); 
     const [previewHtml, setPreviewHtml] = useState('');
     const [userProfile, setUserProfile] = useState<UserStyleProfile>(getProfile());
@@ -39,33 +38,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
     // --- EFFECTS ---
 
-    // 1. Proactive Agent Initialization
-    useEffect(() => {
-        if (topic && messages.length === 0) {
-            const initMessage = `已为您读取关于【${topic.title}】的 5 篇热点文章。基于您的【${userProfile.tone}】风格，我为您构思了以下 3 个切入点，您想用哪个？`;
-            const agentMsg: CMSMessage = {
-                id: uuidv4(),
-                role: 'assistant',
-                content: initMessage,
-                timestamp: Date.now(),
-                uiOptions: [
-                    { label: '🔥 痛点切入 (制造焦虑)', value: 'angle_pain' },
-                    { label: '📖 故事切入 (反直觉案例)', value: 'angle_story' },
-                    { label: '📊 干货切入 (实操盘点)', value: 'angle_data' }
-                ]
-            };
-            setMessages([agentMsg]);
-        }
-    }, [topic, userProfile]);
-
-    // 2. Selection Listener -> UI Feedback
-    useEffect(() => {
-        if (currentSelection.length > 5) {
-             console.log("Agent Context Update: Selection Active", currentSelection.substring(0, 10));
-        }
-    }, [currentSelection]);
-
-    // 3. Preview Update
+    // Preview Update
     useEffect(() => {
         const rawHtml = `<h1>${title}</h1>${content}`;
         const styled = transformToWechatHtml(rawHtml, activeTheme);
@@ -84,7 +57,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 [...messages, userMsg], 
                 text, 
                 { 
-                    topic: topic || null, 
+                    topic: null, 
                     profile: userProfile, 
                     currentSelection: currentSelection,
                     articleContent: content
@@ -184,27 +157,29 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
 
     const handleAssetInsert = (url: string, alt: string, type?: 'image' | 'video') => {
         if(!editorRef.current) return;
-        
         if (type === 'video') {
-            // Best effort video insertion using HTML since Tiptap Image extension doesn't support video
-            // Note: Tiptap might sanitize this depending on configuration, but allowing it for now.
             editorRef.current.chain().focus().insertContent(`<video src="${url}" controls class="w-full rounded-lg my-4"></video><p></p>`).run();
         } else {
             editorRef.current.chain().focus().setImage({ src: url, alt }).run();
         }
-        // Don't auto close, user might want to insert multiple
+    };
+
+    const handleSaveAction = () => {
+        const plainText = editorRef.current?.getText() || "";
+        onSave(title, content, plainText);
     };
 
     return (
         <div className="flex flex-col h-full bg-[#1a1a1a] relative">
             {/* Top Bar */}
             <div className="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-[#1a1a1a] shrink-0 z-20">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded bg-gradient-to-br from-green-500 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg">
-                        <i className="fa-brands fa-weixin"></i>
-                    </div>
+                <div className="flex items-center gap-4">
+                    <button onClick={onBack} className="text-gray-500 hover:text-white transition-colors">
+                        <i className="fa-solid fa-arrow-left"></i>
+                    </button>
+                    <div className="h-6 w-[1px] bg-gray-700"></div>
                     <div>
-                        <h2 className="font-bold text-gray-200 text-sm">Smart CMS</h2>
+                        <h2 className="font-bold text-gray-200 text-sm">写作工坊 (Writer Studio)</h2>
                         <span className="text-[10px] text-gray-500">{userProfile.name} Mode</span>
                     </div>
                 </div>
@@ -216,33 +191,12 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                     <button onClick={() => setShowAssetLib(!showAssetLib)} className={`text-xs mr-2 transition-colors ${showAssetLib ? 'text-blue-400 font-bold' : 'text-gray-400 hover:text-white'}`}>
                         <i className="fa-solid fa-images mr-1"></i> 素材库
                     </button>
-                    
-                    {/* GENERATE SCRIPT BUTTON - UPDATED */}
-                    <button 
-                        onClick={onGenerateScript} 
-                        disabled={isProcessing}
-                        className={`text-xs mr-4 flex items-center gap-2 px-3 py-1.5 rounded transition-all
-                            ${isProcessing 
-                                ? 'bg-indigo-900/30 text-indigo-300 ring-1 ring-indigo-500/50 cursor-wait' 
-                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                            }`}
-                        title="AI 智能分析文章结构并拆解为视频脚本"
-                    >
-                        {isProcessing ? (
-                            <>
-                                <i className="fa-solid fa-circle-notch fa-spin text-indigo-400"></i>
-                                <span>正在拆解分镜...</span>
-                            </>
-                        ) : (
-                            <>
-                                <i className="fa-solid fa-film"></i> 
-                                <span>转为脚本 (A2S)</span>
-                            </>
-                        )}
-                    </button>
 
-                    <button onClick={handleCopy} className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold bg-green-600 hover:bg-green-500 text-white shadow-lg">
-                        <i className="fa-regular fa-copy"></i> 复制到微信
+                    <button 
+                        onClick={handleSaveAction}
+                        className="flex items-center gap-2 px-6 py-1.5 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all"
+                    >
+                        <i className="fa-solid fa-floppy-disk"></i> 保存文章
                     </button>
                 </div>
             </div>
@@ -270,7 +224,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                             />
                             <TiptapEditor 
                                 content={content} 
-                                onChange={onChange} 
+                                onChange={setContent} 
                                 onEditorReady={(ed) => editorRef.current = ed}
                                 onSelectionChange={setCurrentSelection}
                             />
@@ -283,10 +237,14 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                     <div className="p-3 bg-[#141414] border-b border-gray-800 flex justify-between">
                          <span className="text-xs font-bold text-gray-500 uppercase">WeChat Preview</span>
                          <div className="flex gap-1">
-                            {Object.values(THEMES).map(t => (
-                                <button key={t.id} onClick={() => setActiveTheme(t.id)} className={`w-3 h-3 rounded-full ${activeTheme === t.id ? 'ring-1 ring-white' : 'opacity-50'}`} style={{ background: t.colors.primary }} />
-                            ))}
+                             <button onClick={handleCopy} className="text-[10px] bg-green-600 hover:bg-green-500 text-white px-2 py-0.5 rounded">复制</button>
                          </div>
+                    </div>
+                    {/* Theme Selector */}
+                    <div className="p-2 border-b border-gray-800 flex gap-2 justify-center">
+                        {Object.values(THEMES).map(t => (
+                             <button key={t.id} onClick={() => setActiveTheme(t.id)} className={`w-4 h-4 rounded-full ${activeTheme === t.id ? 'ring-2 ring-white scale-110' : 'opacity-50'}`} style={{ background: t.colors.primary }} title={t.name} />
+                        ))}
                     </div>
                     <div className="flex-1 bg-gray-900 p-4 flex justify-center overflow-hidden">
                         <div className="w-[320px] bg-white h-full overflow-y-auto custom-scrollbar shadow-xl">
@@ -301,7 +259,7 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                 
                 {/* Style Settings Drawer */}
                 {showStyleSettings && (
-                    <div className="absolute top-0 left-0 w-64 h-full bg-[#1e1e1e] shadow-2xl z-40 p-4 animate-in slide-in-from-left">
+                    <div className="absolute top-0 right-0 w-64 h-full bg-[#1e1e1e] shadow-2xl z-40 p-4 animate-in slide-in-from-right">
                         <h3 className="text-xs font-bold text-white mb-4">风格配置</h3>
                         <div className="mb-4">
                             <label className="text-[10px] text-gray-500 block mb-1">语气 (Tone)</label>
