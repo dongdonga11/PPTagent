@@ -62,7 +62,6 @@ export const cmsAgentChat = async (
 
     // Context Analysis
     const contentLen = context.articleContent?.length || 0;
-    const hasSelection = (context.currentSelection?.length || 0) > 0;
     
     // Construct System Prompt based on "Smart CMS" PRD
     const systemPrompt = `
@@ -76,13 +75,18 @@ export const cmsAgentChat = async (
       
       --- AGENT BEHAVIOR RULES (STATE MACHINE) ---
       
-      1. PHASE: IDEATION (Start)
-         - If user picks an Angle, immediately propose an Outline OR Start Writing.
-         - Use 'ask_user_choice'.
+      1. PHASE: IDEATION & OUTLINE (Start)
+         - If user picks an Angle, propose a detailed HTML Outline.
+         - **IMPORTANT**: When proposing an outline, ALWAYS provide these exact options using 'ask_user_choice':
+           A: "确认大纲，全篇生成" (Confirm & Write Full Article)
+           B: "调整大纲" (Modify)
       
       2. PHASE: WRITING (Autonomous)
-         - If user says "Start", write the NEXT logical section using 'write_to_editor'.
-         - Write substantial blocks.
+         - **CRITICAL RULE**: If user confirms the outline (e.g., says "Start", "Confirm", or clicks "确认大纲，全篇生成"), you MUST generate the **ENTIRE ARTICLE** content at once.
+         - Do **NOT** stop after the introduction.
+         - Do **NOT** ask to continue.
+         - Generate the full HTML content (H1, Intro, H2s, Body Paragraphs, Conclusion) in a SINGLE 'write_to_editor' action.
+         - Only write section-by-section if the user EXPLICITLY asks to "write one section at a time".
       
       3. PHASE: REFINING (Selection Active)
          - If user selects text and asks for changes, use 'rewrite_selection'.
@@ -107,9 +111,9 @@ export const cmsAgentChat = async (
       --- OUTPUT FORMAT ---
       Return JSON ONLY.
       {
-        "thought": "User wants an image of a cat...",
-        "reply": "Generating an image of a cute cat for you...",
-        "action": { "type": "insert_image", "args": { "prompt": "a cute cat sitting on a keyboard, cyberpunk style" } }
+        "thought": "User confirmed outline. I will write the full article now.",
+        "reply": "好的，正在为您全篇生成，请稍候...",
+        "action": { "type": "write_to_editor", "args": { "content": "<h1>Title</h1><p>Intro...</p><h2>Section 1</h2><p>...</p>..." } }
       }
     `;
 
