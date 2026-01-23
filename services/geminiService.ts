@@ -81,8 +81,28 @@ export const cmsAgentChat = async (
                         action: {
                             type: Type.OBJECT,
                             properties: {
-                                type: { type: Type.STRING, enum: ['write_to_editor', 'rewrite_selection', 'apply_theme', 'ask_user_choice', 'none'] },
-                                args: { type: Type.OBJECT } // Open object for args
+                                type: { 
+                                    type: Type.STRING, 
+                                    enum: ['write_to_editor', 'rewrite_selection', 'apply_theme', 'ask_user_choice', 'none'] 
+                                },
+                                args: { 
+                                    type: Type.OBJECT,
+                                    // Properties must be defined for OBJECT type to avoid 400 error
+                                    properties: {
+                                        content: { type: Type.STRING },
+                                        themeId: { type: Type.STRING },
+                                        options: {
+                                            type: Type.ARRAY,
+                                            items: {
+                                                type: Type.OBJECT,
+                                                properties: {
+                                                    label: { type: Type.STRING },
+                                                    value: { type: Type.STRING }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } 
                             },
                             required: ['type']
                         }
@@ -106,7 +126,6 @@ export const cmsAgentChat = async (
 };
 
 // --- EXISTING CMS FUNCTIONS (Research, Image, etc) ---
-// (Kept for compatibility and specific tool calls if needed directly)
 
 export const performResearchAndIdeation = async (keyword: string, fileContent: string = ''): Promise<ResearchTopic[]> => {
     const ai = getAiClient();
@@ -170,10 +189,67 @@ export const generateArticleSection = async (currentContent: string, instruction
 
 // --- PRESENTATION FUNCTIONS (Preserved) ---
 export const generateSpeech = async (text: string, voiceName: string = 'Kore'): Promise<string | undefined> => {
-    // ... (Same as before)
-    return undefined; // Placeholder to save tokens in this output, assume original exists
+  const ai = getAiClient();
+  const cleanText = text.replace(/\[M\]|\[M:\d+\]|\[Next\]/g, ' ').trim();
+  if (!cleanText) return undefined;
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: cleanText }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
+      },
+    });
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (error) {
+    console.error("Gemini TTS Error:", error);
+    throw error;
+  }
 };
-export const generatePresentationOutline = async (userInput: string): Promise<any[]> => { return []; };
+
+export const generatePresentationOutline = async (userInput: string): Promise<any[]> => {
+  const ai = getAiClient();
+  const systemPrompt = `
+    Role: 你是一位专业的视频课程导演。
+    Task: 将输入的公众号文章拆解为分镜脚本 (Storyboard / A2S)。
+    Constraints: 1. 分段逻辑... 2. 视觉布局... 3. Markers [M]... 4. 口语化... 5. 时长...
+    Output Format: JSON Array.
+  `;
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: userInput,
+    config: {
+      systemInstruction: systemPrompt,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            visual_layout: { type: Type.STRING, enum: ['Cover', 'SectionTitle', 'Bullets', 'SplitLeft', 'SplitRight', 'BigNumber', 'Quote', 'GridFeatures'] },
+            visual_intent: { type: Type.STRING },
+            narration: { type: Type.STRING, description: "Script with [M] tags" },
+            duration: { type: Type.NUMBER }
+          },
+          required: ["title", "visual_layout", "visual_intent", "narration", "duration"],
+        },
+      },
+    },
+  });
+  try {
+    const rawData = JSON.parse(response.text || "[]");
+    return rawData.map((item: any) => {
+        const { markers } = parseScriptAndAlign(item.narration, item.duration);
+        return { ...item, markers };
+    });
+  } catch (e) {
+    console.error("Failed to parse outline JSON", e);
+    return [];
+  }
+};
+
 export const refineTextWithAI = async (text: string, instruction: string, context?: string): Promise<string> => { 
     const ai = getAiClient();
     const response = await ai.models.generateContent({
@@ -182,6 +258,43 @@ export const refineTextWithAI = async (text: string, instruction: string, contex
     });
     return response.text?.trim() || text;
 };
-export const generateTheme = async (userInput: string): Promise<GlobalStyle> => { return {} as any; };
-export const generateSlideHtml = async (slide: Slide, globalStyle: GlobalStyle, context?: string): Promise<string> => { return ""; };
-export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle) => { return ""; };
+
+export const generateTheme = async (userInput: string): Promise<GlobalStyle> => {
+  const ai = getAiClient();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: userInput,
+    config: {
+      systemInstruction: "Visual Director. JSON output.",
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+            mainColor: { type: Type.STRING },
+            accentColor: { type: Type.STRING },
+            themeName: { type: Type.STRING },
+            fontFamily: { type: Type.STRING }
+        }
+      }
+    },
+  });
+   try { return JSON.parse(response.text || "{}"); } 
+   catch (e) { return { mainColor: "#1f2937", accentColor: "#3b82f6", themeName: "Default", fontFamily: "Inter, sans-serif" }; }
+}
+
+export const generateSlideHtml = async (slide: Slide, globalStyle: GlobalStyle, context?: string): Promise<string> => {
+  const ai = getAiClient();
+  const prompt = `Generate HTML for slide: ${slide.title}. Layout: ${slide.visual_layout}. Intent: ${slide.visual_intent}. Narration: ${slide.narration}. Style: ${globalStyle.mainColor}, ${globalStyle.accentColor}. ${context || ''}`;
+  const systemPrompt = `Frontend Coder. Tailwind CSS. 16:9 Aspect Ratio. Animation data-motion.`;
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: { systemInstruction: systemPrompt, temperature: 0.7 },
+  });
+  let html = response.text || '<div class="h-full flex items-center justify-center">Error</div>';
+  return html.replace(/```html/g, '').replace(/```/g, '').trim();
+};
+
+export const generateFullPresentationHtml = (slides: Slide[], style: GlobalStyle) => {
+    return `<!doctype html><html><body>Presentation</body></html>`; 
+}
