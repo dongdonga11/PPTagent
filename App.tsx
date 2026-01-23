@@ -3,12 +3,13 @@ import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PresentationState, Slide, ChatMessage, AgentMode, GlobalStyle, ProjectStage, ResearchTopic } from './types';
 import StageSidebar from './components/StageSidebar';
+import ProjectDashboard from './components/ProjectDashboard'; // NEW
 import ArticleEditor from './components/ArticleEditor';
 import ChatInterface from './components/ChatInterface';
 import SlidePreview from './components/SlidePreview';
 import SlideList from './components/SlideList';
 import CodeEditor from './components/CodeEditor';
-import ScriptEngine from './components/ScriptEngine'; // Updated Import
+import ScriptEngine from './components/ScriptEngine'; 
 import PresentationRunner from './components/PresentationRunner';
 import VideoStage from './components/VideoStage'; 
 import ResearchPanel from './components/ResearchPanel'; 
@@ -27,7 +28,7 @@ const App: React.FC = () => {
   const [state, setState] = useState<PresentationState>({
     projectId: uuidv4(),
     title: '未命名项目',
-    stage: ProjectStage.RESEARCH, 
+    stage: ProjectStage.DASHBOARD, // Default to Dashboard (Central Kitchen)
     sourceMaterial: '',
     slides: [],
     globalStyle: DEFAULT_STYLE
@@ -148,6 +149,17 @@ const App: React.FC = () => {
 
   const renderMainArea = () => {
     switch (state.stage) {
+        case ProjectStage.DASHBOARD:
+            return (
+                <ProjectDashboard 
+                    title={state.title}
+                    sourceWordCount={state.sourceMaterial.length}
+                    slidesCount={state.slides.length}
+                    videoDuration={state.slides.reduce((acc,s) => acc + s.duration, 0)}
+                    onNavigate={(stage) => setState(prev => ({ ...prev, stage }))}
+                />
+            );
+
         case ProjectStage.RESEARCH:
             return <ResearchPanel onSelectTopic={handleSelectTopic} />;
 

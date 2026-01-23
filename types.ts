@@ -59,6 +59,7 @@ export interface ResearchTopic {
 }
 
 export enum ProjectStage {
+  DASHBOARD = 'DASHBOARD', // New Central Hub
   RESEARCH = 'RESEARCH', // Step 0: Input & Ideation (Research Panel)
   STORY = 'STORY',       // Step 1: Write the article (Drafting Bench)
   SCRIPT = 'SCRIPT',     // Step 2: A2S - Breakdown into Scenes (Script Engine)
