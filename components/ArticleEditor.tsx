@@ -216,7 +216,31 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
                     <button onClick={() => setShowAssetLib(!showAssetLib)} className={`text-xs mr-2 transition-colors ${showAssetLib ? 'text-blue-400 font-bold' : 'text-gray-400 hover:text-white'}`}>
                         <i className="fa-solid fa-images mr-1"></i> 素材库
                     </button>
-                    <button onClick={onGenerateScript} className="text-xs text-gray-400 hover:text-white mr-4" title="转为视频脚本"><i className="fa-solid fa-film mr-1"></i> 转脚本</button>
+                    
+                    {/* GENERATE SCRIPT BUTTON - UPDATED */}
+                    <button 
+                        onClick={onGenerateScript} 
+                        disabled={isProcessing}
+                        className={`text-xs mr-4 flex items-center gap-2 px-3 py-1.5 rounded transition-all
+                            ${isProcessing 
+                                ? 'bg-indigo-900/30 text-indigo-300 ring-1 ring-indigo-500/50 cursor-wait' 
+                                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                            }`}
+                        title="AI 智能分析文章结构并拆解为视频脚本"
+                    >
+                        {isProcessing ? (
+                            <>
+                                <i className="fa-solid fa-circle-notch fa-spin text-indigo-400"></i>
+                                <span>正在拆解分镜...</span>
+                            </>
+                        ) : (
+                            <>
+                                <i className="fa-solid fa-film"></i> 
+                                <span>转为脚本 (A2S)</span>
+                            </>
+                        )}
+                    </button>
+
                     <button onClick={handleCopy} className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold bg-green-600 hover:bg-green-500 text-white shadow-lg">
                         <i className="fa-regular fa-copy"></i> 复制到微信
                     </button>
