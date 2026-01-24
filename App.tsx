@@ -26,6 +26,51 @@ const DEFAULT_STYLE: GlobalStyle = {
 };
 
 const App: React.FC = () => {
+  // --- API KEY CHECK ---
+  const apiKey = process.env.API_KEY;
+  const provider = (process.env.AI_PROVIDER || 'gemini') as 'gemini' | 'deepseek' | 'glm';
+  
+  if (!apiKey || apiKey === 'your_api_key_here') {
+    const providerInfo = {
+      gemini: { name: 'Google Gemini', url: 'https://ai.google.dev/', keyFormat: 'AIzaSy...' },
+      deepseek: { name: 'DeepSeek', url: 'https://platform.deepseek.com/', keyFormat: 'sk-...' },
+      glm: { name: 'GLM (智谱)', url: 'https://open.bigmodel.cn/', keyFormat: 'xxx.xxx' }
+    };
+    
+    const info = providerInfo[provider];
+    
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-gray-950 text-white">
+        <div className="max-w-2xl p-8 bg-gray-900 rounded-xl border border-red-500/50 shadow-2xl">
+          <div className="flex items-center gap-3 mb-4">
+            <i className="fa-solid fa-triangle-exclamation text-red-500 text-3xl"></i>
+            <h1 className="text-2xl font-bold text-red-400">缺少 {info.name} API Key</h1>
+          </div>
+          <p className="text-gray-300 mb-4">
+            当前配置使用 <span className="text-blue-400 font-bold">{info.name}</span> 服务，请按以下步骤配置：
+          </p>
+          <ol className="list-decimal list-inside space-y-2 text-gray-400 mb-6">
+            <li>访问 <a href={info.url} target="_blank" className="text-blue-400 hover:underline">{info.name} 官网</a> 获取 API Key</li>
+            <li>在项目根目录找到 <code className="bg-gray-800 px-2 py-1 rounded text-yellow-400">.env.local</code> 文件</li>
+            <li>取消注释对应服务商的配置行</li>
+            <li>将 <code className="bg-gray-800 px-2 py-1 rounded">your_api_key_here</code> 替换为你的真实 API Key</li>
+            <li>保存文件后刷新页面</li>
+          </ol>
+          <div className="bg-gray-800 p-4 rounded font-mono text-sm text-green-400 mb-4">
+            AI_PROVIDER={provider}<br/>
+            {provider === 'gemini' && `GEMINI_API_KEY=${info.keyFormat}`}
+            {provider === 'deepseek' && `DEEPSEEK_API_KEY=${info.keyFormat}`}
+            {provider === 'glm' && `GLM_API_KEY=${info.keyFormat}`}
+          </div>
+          <div className="bg-blue-900/20 border border-blue-500/30 rounded p-3 text-sm text-blue-300">
+            <i className="fa-solid fa-lightbulb mr-2"></i>
+            <strong>提示：</strong>支持切换服务商！修改 <code className="bg-gray-800 px-1.5 py-0.5 rounded">AI_PROVIDER</code> 为 gemini / deepseek / glm
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // --- GLOBAL STATE ---
   const [state, setState] = useState<PresentationState>({
     projectId: uuidv4(),

@@ -9,19 +9,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "uuid": "9.0.1",
     "@google/genai": "0.2.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "framer-motion": "10.16.4",
+    "@tiptap/core": "^3.17.0",
+    "@tiptap/extension-bubble-menu": "^3.17.0",
+    "@tiptap/extension-floating-menu": "^3.17.0",
+    "@tiptap/extension-image": "^3.17.0",
+    "@tiptap/extension-placeholder": "^3.17.0",
+    "@tiptap/react": "^3.17.0",
+    "@tiptap/starter-kit": "^3.17.0",
     "classnames": "2.3.2",
-    "@tiptap/core": "2.6.6",
-    "@tiptap/starter-kit": "2.6.6",
-    "@tiptap/extension-placeholder": "2.6.6",
-    "@tiptap/extension-image": "2.6.6",
-    "@tiptap/extension-bubble-menu": "2.6.6",
-    "@tiptap/extension-floating-menu": "2.6.6",
-    "@tiptap/react": "2.6.6"
+    "framer-motion": "10.16.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "uuid": "9.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

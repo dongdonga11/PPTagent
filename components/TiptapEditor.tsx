@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { useEditor, EditorContent, BubbleMenu, FloatingMenu, Editor } from '@tiptap/react';
+import { useEditor, EditorContent, Editor } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/extension-bubble-menu';
+import { FloatingMenu } from '@tiptap/extension-floating-menu';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
