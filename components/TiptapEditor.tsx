@@ -1,8 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
-import { BubbleMenu } from '@tiptap/extension-bubble-menu';
-import { FloatingMenu } from '@tiptap/extension-floating-menu';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Image from '@tiptap/extension-image';
@@ -80,34 +78,30 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({ content, onChange, onEditor
 
     return (
         <div className="relative w-full h-full flex flex-col">
-            {/* BUBBLE MENU */}
-            <BubbleMenu 
-                editor={editor} 
-                tippyOptions={{ duration: 100, placement: 'top' }}
-                className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col min-w-[200px] z-50"
-            >
-                {/* Simplified Bubble Menu */}
-                <div className="p-1 flex flex-col gap-0.5">
-                    <button onClick={() => handleAiCommand('polish', '润色这段文字')} className="menu-item">
-                        <i className="fa-solid fa-pen-fancy text-xs text-blue-400 w-4"></i> 快速润色
-                    </button>
-                    <div className="text-[10px] text-gray-500 px-3 py-1">Tip: 可在左侧对话框输入 "/image" 生成配图</div>
-                </div>
-            </BubbleMenu>
-
-            {/* FLOATING MENU */}
-            <FloatingMenu 
-                editor={editor} 
-                tippyOptions={{ duration: 100, placement: 'right-start' }}
-                className="flex items-center gap-1 -ml-10"
-            >
+            {/* Toolbar - 简化版工具栏 */}
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800 bg-gray-900">
                 <button 
-                     onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                     className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center justify-center shadow-lg"
-                >H2</button>
-            </FloatingMenu>
+                    onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                    className={`px-3 py-1 text-sm rounded ${editor.isActive('heading', { level: 2 }) ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+                >
+                    H2
+                </button>
+                <button 
+                    onClick={() => editor.chain().focus().toggleBold().run()}
+                    className={`px-3 py-1 text-sm rounded ${editor.isActive('bold') ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+                >
+                    <i className="fa-solid fa-bold"></i>
+                </button>
+                <div className="flex-1"></div>
+                <button 
+                    onClick={() => handleAiCommand('polish', '润色选中的文字')}
+                    disabled={isAiProcessing}
+                    className="px-3 py-1 text-sm rounded bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-50"
+                >
+                    {isAiProcessing ? '处理中...' : 'AI 润色'}
+                </button>
+            </div>
 
-            <style>{`.menu-item { @apply text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700 rounded flex items-center gap-2 w-full transition-colors; }`}</style>
             <EditorContent editor={editor} className="flex-1 overflow-y-auto outline-none custom-scrollbar" />
         </div>
     );
