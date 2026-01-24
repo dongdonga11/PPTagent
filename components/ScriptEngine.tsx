@@ -73,7 +73,7 @@ const ScriptEngine: React.FC<ScriptEngineProps> = (props) => {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-hidden relative">
+            <div className="flex-1 overflow-hidden relative flex flex-col">
                 {viewMode === 'table' && (
                     <ScriptTableView 
                         slides={props.slides}
