@@ -116,10 +116,13 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
 
     const currentSlide = slides[currentIndex];
 
+    // Calculate total steps (animations) accurately using DOM parser
     const totalSteps = useMemo(() => {
         if (!currentSlide?.content_html) return 0;
-        const matches = currentSlide.content_html.match(/data-motion/g);
-        return matches ? matches.length : 0;
+        // Use DOM parser to match actual elements, avoiding regex false positives (like text content)
+        const div = document.createElement('div');
+        div.innerHTML = currentSlide.content_html;
+        return div.querySelectorAll('[data-motion]').length;
     }, [currentSlide]);
 
     useEffect(() => {
@@ -127,18 +130,24 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
     }, [currentIndex]);
 
     const handleNext = useCallback(() => {
+        // If we still have animation steps to reveal, increment step
         if (animationStep < totalSteps) {
             setAnimationStep(prev => prev + 1);
-        } else if (currentIndex < slides.length - 1) {
+        } 
+        // Otherwise, move to next slide
+        else if (currentIndex < slides.length - 1) {
             setDirection(1);
             setCurrentIndex(prev => prev + 1);
         }
     }, [currentIndex, slides.length, animationStep, totalSteps]);
 
     const handlePrev = useCallback(() => {
+        // If we are in the middle of animations, go back a step
         if (animationStep > 0) {
             setAnimationStep(prev => prev - 1);
-        } else if (currentIndex > 0) {
+        } 
+        // Otherwise, go to previous slide
+        else if (currentIndex > 0) {
             setDirection(-1);
             setCurrentIndex(prev => prev - 1);
         }
@@ -190,7 +199,7 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
                 </button>
             </div>
 
-            <div className="relative w-full h-full max-w-[1920px] aspect-video flex items-center justify-center p-4 sm:p-12">
+            <div className="relative w-full h-full max-w-[1920px] aspect-video flex items-center justify-center p-4 sm:p-12 z-0">
                 <AnimatePresence initial={false} custom={direction} mode='popLayout'>
                     <motion.div
                         key={currentIndex}
@@ -212,8 +221,17 @@ const PresentationRunner: React.FC<PresentationRunnerProps> = ({ slides, globalS
                 </AnimatePresence>
             </div>
 
-            <div className="absolute left-0 top-0 w-[10%] h-full cursor-pointer z-40 hover:bg-white/5 transition-colors" onClick={handlePrev} />
-            <div className="absolute right-0 top-0 w-[10%] h-full cursor-pointer z-40 hover:bg-white/5 transition-colors" onClick={handleNext} />
+            {/* Click Areas - Expanded to 30% width each with visual feedback */}
+            <div className="absolute left-0 top-0 w-[30%] h-full cursor-pointer z-40 hover:bg-white/5 transition-colors group" onClick={handlePrev}>
+                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-white/80 transition-colors text-4xl">
+                    <i className="fa-solid fa-chevron-left"></i>
+                 </div>
+            </div>
+            <div className="absolute right-0 top-0 w-[30%] h-full cursor-pointer z-40 hover:bg-white/5 transition-colors group" onClick={handleNext}>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 group-hover:text-white/80 transition-colors text-4xl">
+                    <i className="fa-solid fa-chevron-right"></i>
+                 </div>
+            </div>
         </div>
     );
 };

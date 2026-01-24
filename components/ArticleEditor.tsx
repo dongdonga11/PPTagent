@@ -146,12 +146,24 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
             // Execute Tool Action
             await executeAgentAction(response.action);
 
+            // INTELLIGENT NEXT STEP PREDICTION
+            // If the agent just wrote content, inject buttons so the user isn't left hanging.
+            let nextStepOptions = response.action.type === 'ask_user_choice' ? response.action.args.options : undefined;
+            
+            if (response.action.type === 'write_to_editor') {
+                 nextStepOptions = [
+                     { label: '🎨 自动生成配图 (AI Images)', value: 'cmd_auto_images' },
+                     { label: '✨ 润色文字 (Polish)', value: 'cmd_polish' },
+                     { label: '📤 同步到 GitHub', value: 'cmd_sync_github' }
+                 ];
+            }
+
             const aiMsg: CMSMessage = { 
                 id: uuidv4(), 
                 role: 'assistant', 
                 content: response.reply, 
                 timestamp: Date.now(),
-                uiOptions: response.action.type === 'ask_user_choice' ? response.action.args.options : undefined
+                uiOptions: nextStepOptions
             };
             setMessages(prev => [...prev, aiMsg]);
 
@@ -171,7 +183,18 @@ const ArticleEditor: React.FC<ArticleEditorProps> = ({ content, onChange, onGene
             }
             return prev;
         });
-        handleSendMessage(`我选择：${label}`);
+
+        // Handle Special Command Shortcuts
+        if (value === 'cmd_auto_images') {
+            handleSendMessage("请为这篇文章生成 2-3 张合适的配图。");
+        } else if (value === 'cmd_polish') {
+            handleSendMessage("请润色这篇文章，使其语气更专业流畅。");
+        } else if (value === 'cmd_sync_github') {
+            handleGitHubSync();
+            setMessages(prev => [...prev, { id: uuidv4(), role: 'assistant', content: '正在启动 GitHub 同步进程...', timestamp: Date.now() }]);
+        } else {
+            handleSendMessage(`我选择：${label}`);
+        }
     };
 
     const executeAgentAction = async (action: { type: string, args: any }) => {

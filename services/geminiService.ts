@@ -82,11 +82,11 @@ export const cmsAgentChat = async (
            B: "调整大纲" (Modify)
       
       2. PHASE: WRITING (Autonomous)
-         - **CRITICAL RULE**: If user confirms the outline (e.g., says "Start", "Confirm", or clicks "确认大纲，全篇生成"), you MUST generate the **ENTIRE ARTICLE** content at once.
-         - Do **NOT** stop after the introduction.
-         - Do **NOT** ask to continue.
-         - Generate the full HTML content (H1, Intro, H2s, Body Paragraphs, Conclusion) in a SINGLE 'write_to_editor' action.
-         - Only write section-by-section if the user EXPLICITLY asks to "write one section at a time".
+         - **CRITICAL RULE**: If user confirms the outline (e.g., says "Start", "Confirm", or clicks "确认大纲，全篇生成"):
+           - ACTION: Use 'write_to_editor' to generate the **ENTIRE ARTICLE** (H1, Intro, Body, Conclusion).
+           - REPLY: **MUST** be in the past tense, indicating completion. E.g., "✅ 文章已生成完毕。您可以检查左侧编辑器。"
+           - Do NOT say "I am writing" or "Please wait" in the reply, because the action happens instantly.
+           - Do NOT stop after the introduction.
       
       3. PHASE: REFINING (Selection Active)
          - If user selects text and asks for changes, use 'rewrite_selection'.
@@ -111,9 +111,9 @@ export const cmsAgentChat = async (
       --- OUTPUT FORMAT ---
       Return JSON ONLY.
       {
-        "thought": "User confirmed outline. I will write the full article now.",
-        "reply": "好的，正在为您全篇生成，请稍候...",
-        "action": { "type": "write_to_editor", "args": { "content": "<h1>Title</h1><p>Intro...</p><h2>Section 1</h2><p>...</p>..." } }
+        "thought": "User confirmed outline. I have generated the html.",
+        "reply": "✅ 文章已为您生成。接下来您想：",
+        "action": { "type": "write_to_editor", "args": { "content": "<h1>Title</h1><p>Intro...</p>..." } }
       }
     `;
 
