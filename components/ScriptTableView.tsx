@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Slide } from '../types';
 import { SlideRenderer } from './PresentationRunner';
 import { getLayoutIcon, calculateDuration } from '../utils/scriptUtils';
 import { parseScriptAndAlign } from '../utils/timelineUtils';
+import { refineTextWithAI } from '../services/geminiService';
 
 interface ScriptTableViewProps {
     slides: Slide[];
@@ -20,6 +21,8 @@ const ScriptTableView: React.FC<ScriptTableViewProps> = ({
     onGenerateVisual,
     onSelectSlide
 }) => {
+    // Local state for text processing loading indicators
+    const [processingTextId, setProcessingTextId] = useState<string | null>(null);
 
     const handleNarrationChange = (id: string, text: string, currentDuration: number) => {
         // Recalculate duration if significant change and no audio locked
@@ -34,6 +37,33 @@ const ScriptTableView: React.FC<ScriptTableViewProps> = ({
             duration: newDuration, 
             audioData: undefined // Invalidate audio
         });
+    };
+
+    const handlePolishNarration = async (slide: Slide) => {
+        if (!slide.narration) return;
+        setProcessingTextId(slide.id);
+        try {
+            const refined = await refineTextWithAI(
+                slide.narration, 
+                "Rewrite this script segment to be more engaging, concise, and spoken-style (oral presentation). Keep it roughly the same length."
+            );
+            
+            // Recalc properties for new text
+            const newDuration = calculateDuration(refined);
+            const { markers } = parseScriptAndAlign(refined, newDuration);
+            
+            onUpdateSlide(slide.id, { 
+                narration: refined,
+                markers: markers,
+                duration: newDuration,
+                audioData: undefined
+            });
+        } catch (e) {
+            console.error(e);
+            alert("AI Optimization failed");
+        } finally {
+            setProcessingTextId(null);
+        }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, slide: Slide) => {
@@ -177,21 +207,34 @@ const ScriptTableView: React.FC<ScriptTableViewProps> = ({
 
                                     {/* Actions */}
                                     <td className="p-4 align-top text-right">
-                                        <div className="flex flex-col gap-2 items-end opacity-40 group-hover:opacity-100 transition-opacity">
+                                        <div className={`flex flex-col gap-2 items-end transition-opacity ${slide.isLoading || processingTextId === slide.id ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
                                             <button 
                                                 onClick={() => onGenerateVisual(slide.id)}
-                                                className="text-xs bg-gray-800 hover:bg-blue-600 hover:text-white text-gray-300 px-3 py-1.5 rounded border border-gray-700 transition-colors flex items-center gap-2 w-28 justify-center"
+                                                disabled={slide.isLoading}
+                                                className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-2 w-28 justify-center
+                                                    ${slide.isLoading 
+                                                        ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-wait' 
+                                                        : 'bg-gray-800 hover:bg-blue-600 hover:text-white text-gray-300 border-gray-700'
+                                                    }
+                                                `}
                                                 title="Re-run AI Coder"
                                             >
-                                                <i className="fa-solid fa-wand-magic-sparkles"></i> 
-                                                {slide.isGenerated ? '重绘画面' : '生成画面'}
+                                                {slide.isLoading ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>} 
+                                                {slide.isLoading ? '生成中...' : (slide.isGenerated ? '重绘画面' : '生成画面')}
                                             </button>
                                             <button 
-                                                className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded border border-gray-700 transition-colors flex items-center gap-2 w-28 justify-center"
-                                                title="AI Rewrite Narration (Mock)"
-                                                onClick={() => alert("调用 Agent 优化文案功能开发中...")}
+                                                onClick={() => handlePolishNarration(slide)}
+                                                disabled={processingTextId === slide.id}
+                                                className={`text-xs px-3 py-1.5 rounded border transition-colors flex items-center gap-2 w-28 justify-center
+                                                     ${processingTextId === slide.id
+                                                        ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-wait' 
+                                                        : 'bg-gray-800 hover:bg-purple-600 hover:text-white text-gray-300 border-gray-700'
+                                                    }
+                                                `}
+                                                title="AI Rewrite Narration"
                                             >
-                                                <i className="fa-solid fa-pen-nib"></i> 润色文案
+                                                {processingTextId === slide.id ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-pen-nib"></i>}
+                                                {processingTextId === slide.id ? '润色中...' : '润色文案'}
                                             </button>
                                         </div>
                                     </td>
