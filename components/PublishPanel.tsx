@@ -30,7 +30,8 @@ const PLATFORMS: Platform[] = [
   { id: 'toutiao', name: '今日头条', icon: 'fas fa-newspaper', color: '#ff0000', url: 'https://mp.toutiao.com/' },
 ];
 
-const EXTENSION_ID = 'YOUR_EXTENSION_ID'; // 安装后替换
+const EXTENSION_ID = 'genponjmpbohkfnbhjgmdehfonffckie'; // 安装后替换
+
 
 const PublishPanel: React.FC<PublishPanelProps> = ({ title, content, onClose }) => {
   const [extensionInstalled, setExtensionInstalled] = useState<boolean | null>(null);
@@ -62,6 +63,11 @@ const PublishPanel: React.FC<PublishPanelProps> = ({ title, content, onClose }) 
 
   const handlePublish = async (platform: Platform) => {
     const apiKey = process.env.API_KEY;
+    const provider = process.env.AI_PROVIDER || 'gemini';
+    const model = provider === 'deepseek' ? (process.env.DEEPSEEK_MODEL || 'deepseek-chat') 
+                : provider === 'glm' ? (process.env.GLM_MODEL || 'glm-4-flash')
+                : 'gemini-2.0-flash-exp';
+    
     if (!apiKey) {
       setStatus('❌ 缺少 API Key');
       return;
@@ -81,7 +87,7 @@ const PublishPanel: React.FC<PublishPanelProps> = ({ title, content, onClose }) 
     try {
       chrome.runtime.sendMessage(EXTENSION_ID, {
         type: 'PREPARE_PUBLISH',
-        payload: { title, content, platform: platform.id, apiKey }
+        payload: { title, content, platform: platform.id, apiKey, provider, model }
       }, (response) => {
         if (response?.success) {
           setStatus(`✅ 已跳转到 ${platform.name}，AI 正在自动填充...`);

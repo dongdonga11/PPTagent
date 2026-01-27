@@ -52,15 +52,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // 处理发布准备
 async function handlePreparePublish(payload, sendResponse) {
-  const { title, content, platform, apiKey } = payload;
+  const { title, content, platform, apiKey, provider, model } = payload;
   
-  // 存储文章数据和 API Key
+  // 存储文章数据和 API 配置
   await chrome.storage.local.set({
     pending_article: {
       title,
       content,
       platform,
       apiKey,
+      provider: provider || 'gemini',
+      model: model || '',
       timestamp: Date.now()
     }
   });

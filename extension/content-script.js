@@ -301,32 +301,82 @@
     });
   }
 
-  // 调用 AI 分析页面
+  // 调用 AI 分析页面 - 支持多服务商
   async function analyzeWithAI(snapshot, article) {
     const prompt = buildPrompt(snapshot, article);
+    const { apiKey, provider, model } = article;
     
-    // 使用存储的 API Key
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${article.apiKey}`,
-      {
+    let response, data, text;
+    
+    if (provider === 'deepseek') {
+      // DeepSeek API (OpenAI 兼容)
+      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.3
-          }
+          model: model || 'deepseek-chat',
+          messages: [
+            { role: 'system', content: '你是一个网页自动化助手，返回 JSON 格式的操作步骤。' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          response_format: { type: 'json_object' }
         })
-      }
-    );
-    
-    if (!response.ok) {
-      throw new Error(`AI API 错误: ${response.status}`);
+      });
+      
+      if (!response.ok) throw new Error(`DeepSeek API 错误: ${response.status}`);
+      data = await response.json();
+      text = data.choices?.[0]?.message?.content;
+      
+    } else if (provider === 'glm') {
+      // GLM 智谱 API
+      response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model || 'glm-4-flash',
+          messages: [
+            { role: 'system', content: '你是一个网页自动化助手，返回 JSON 格式的操作步骤。' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.3,
+          response_format: { type: 'json_object' }
+        })
+      });
+      
+      if (!response.ok) throw new Error(`GLM API 错误: ${response.status}`);
+      data = await response.json();
+      text = data.choices?.[0]?.message?.content;
+      
+    } else {
+      // Gemini API (默认)
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.3
+            }
+          })
+        }
+      );
+      
+      if (!response.ok) throw new Error(`Gemini API 错误: ${response.status}`);
+      data = await response.json();
+      text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     }
     
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    console.log('[AI发布助手] AI 返回:', text);
     return JSON.parse(text);
   }
 
