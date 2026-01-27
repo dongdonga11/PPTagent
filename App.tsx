@@ -14,7 +14,8 @@ import ScriptEngine from './components/ScriptEngine';
 import PresentationRunner from './components/PresentationRunner';
 import VideoStage from './components/VideoStage'; 
 import ResearchPanel from './components/ResearchPanel'; 
-import GlobalSettingsModal from './components/GlobalSettingsModal'; 
+import GlobalSettingsModal from './components/GlobalSettingsModal';
+import PublishPanel from './components/PublishPanel'; 
 import { generatePresentationOutline, generateSlideHtml, generateTheme } from './services/geminiService';
 import { calculateDuration } from './utils/scriptUtils';
 
@@ -278,6 +279,16 @@ const App: React.FC = () => {
                     onMoveSlide={() => {}}
                     onSplitSlide={() => {}}
                 />
+            );
+
+        case ProjectStage.PUBLISH:
+            return (
+                <div className="h-full flex items-center justify-center bg-gray-950">
+                    <PublishPanel 
+                        title={state.title}
+                        content={state.sourceMaterial}
+                    />
+                </div>
             );
 
         case ProjectStage.VISUAL:

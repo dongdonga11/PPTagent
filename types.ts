@@ -74,7 +74,8 @@ export enum ProjectStage {
   POSTER = 'POSTER',     // Step 1.5: Social Media / RedBook (NEW)
   SCRIPT = 'SCRIPT',     // Step 2: A2S - Breakdown into Scenes (Script Engine)
   VISUAL = 'VISUAL',     // Step 3: AI Coder - Generate HTML
-  EXPORT = 'EXPORT'      // Step 4: Finalize
+  EXPORT = 'EXPORT',     // Step 4: Finalize
+  PUBLISH = 'PUBLISH'    // Step 5: Multi-platform publishing
 }
 
 export interface PresentationState {
